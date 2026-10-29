@@ -295,7 +295,8 @@ const LECTURA = (() => {
         r.marca = b; antes = toks.slice(0, iMar).join(''); despues = toks.slice(iMar + b.split(' ').length);
       } else {
         antes = toks[0] || ''; despues = toks.slice(1);
-        if (despues.length) { r.marca = despues.shift(); duda('marca', 'Revise la marca.'); }
+        // nunca usar como marca algo que parece placa o número: los almacenes venden AKT
+        if (despues.length && !placaDe(despues[0]) && !/\d/.test(despues[0])) { r.marca = despues.shift(); duda('marca', 'Revise la marca.'); }
       }
       const p = mejorPlaca(antes);
       if (p) { r.placa = p.placa; if (p.cost || antes.length !== 6) duda('placa', 'Revise la placa letra por letra (la lectura gratuita confunde 0/O, 1/I, 7/T, 6/G, 8/B).'); }
@@ -307,7 +308,8 @@ const LECTURA = (() => {
       if (!r.placa) { const pl = lineas.find(l => /PLACA/.test(l.n)); if (pl) { const p = mejorPlaca(pl.t.replace(/.*PLACA/, '')); if (p) { r.placa = p.placa; duda('placa', 'Revise la placa letra por letra.'); } } }
     }
     if (!r.modelo) { m = todoN.match(/MODELO\s*:?\s*((19|20)\d{2})/); if (m) r.modelo = m[1]; }
-    if (!r.marca) { const mar = MARCAS.find(b => new RegExp('\\b' + b + '\\b').test(todoN)); if (mar) { r.marca = mar; duda('marca', 'Revise la marca.'); } }
+    if (!r.marca) { const mar = MARCAS.find(b => new RegExp('\\b' + b + '\\b').test(todoN)); if (mar) r.marca = mar; }
+    if (!r.marca || (r.marca !== 'AKT' && /\bAK\s?\d{2,3}/.test(todoN))) { r.marca = 'AKT'; duda('marca', 'Se puso AKT. Revise la marca.'); }
 
     // Cilindraje, color, servicio
     const l2 = valoresBajo(lineas, /CILINDRAJE|CILINDRADA|COLOR\b/);
@@ -371,7 +373,12 @@ const LECTURA = (() => {
     if (lim && !/BLINDAJE|POTENCIA|DECLARACION/.test(lim.n)) r.limitacion_propiedad = /^\*+$/.test(lim.t.replace(/\s/g, '')) ? '******' : lim.t;
     if (!r.limitacion_propiedad) { const ip = lineas.findIndex(l => /\bPRENDA\b/.test(l.n)); if (ip >= 0) r.limitacion_propiedad = lineas[ip].t + (lineas[ip + 1] && !/FECHA|MATRICULA|ORGANISMO/.test(lineas[ip + 1].n) ? ' ' + lineas[ip + 1].t : ''); }
     else if (/\bY\s*$|INVERSIONES/.test(r.limitacion_propiedad)) { const ip = lineas.findIndex(l => l.t === r.limitacion_propiedad); if (ip >= 0 && lineas[ip + 1] && !/FECHA|MATRICULA|ORGANISMO/.test(lineas[ip + 1].n)) r.limitacion_propiedad += ' ' + lineas[ip + 1].t; }
-    { const ln = sinTilde(r.limitacion_propiedad + ' ' + todo); if (/PRENDA/.test(ln) && /INVERSI/.test(ln) && /MOTOCARRO|MOTOS\s*Y/.test(ln)) r.limitacion_propiedad = 'PRENDA - INVERSIONES MOTOS Y MOTOCARROS S.A.S'; }
+    { // la prenda viene en dos renglones: "PRENDA - INVERSIONES MOTOS Y" / "MOTOCARROS S.A.S"
+      const ln = sinTilde(r.limitacion_propiedad + ' ' + todo).replace(/\s+/g, ' ');
+      const inv = /INVER\w*/.test(ln), moto = /MOTO\w*/.test(ln) || /CARROS/.test(ln), pre = /PRE[NM]DA|PRENOA|PREDA/.test(ln);
+      if ((pre && inv) || (inv && /MOTOCARR|MOTOS\s*Y|CARROS\s*S/.test(ln))) r.limitacion_propiedad = 'PRENDA - INVERSIONES MOTOS Y MOTOCARROS S.A.S';
+      else if (pre && !r.limitacion_propiedad) { const lp = lineas.find(l => /PRE[NM]DA/.test(l.n)); if (lp) r.limitacion_propiedad = lp.t; }
+    }
 
     // Organismo de tránsito
     const org = valoresBajo(lineas, /ORGANISMO/);
@@ -410,9 +417,10 @@ const LECTOR = (() => {
     const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, cv.width, cv.height);
     const img = g.getImageData(0, 0, cv.width, cv.height), d = img.data, hist = new Uint32Array(256);
     for (let i = 0; i < d.length; i += 4) { const y = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0; d[i] = y; hist[y]++; }
-    const n = d.length / 4, corte = n * 0.02; let lo = 0, hi = 255, acc = 0;
-    while (lo < 255 && (acc += hist[lo]) < corte) lo++;
-    acc = 0; while (hi > 0 && (acc += hist[hi]) < corte) hi--;
+    const n = d.length / 4;
+    const rango = f => { let lo = 0, hi = 255, acc = 0; while (lo < 255 && (acc += hist[lo]) < n * f) lo++; acc = 0; while (hi > 0 && (acc += hist[hi]) < n * f) hi--; return [lo, hi]; };
+    let [lo, hi] = rango(0.02);
+    if (hi - lo < 100) { [lo, hi] = rango(0.005); lo = Math.min(lo, 90); hi = Math.max(hi, 170); }   // casi todo es fondo: contraste suave
     const k = hi > lo ? 255 / (hi - lo) : 1;
     for (let i = 0; i < d.length; i += 4) { const v = Math.max(0, Math.min(255, (d[i] - lo) * k)); d[i] = d[i + 1] = d[i + 2] = v; }
     g.putImageData(img, 0, 0);
@@ -424,9 +432,34 @@ const LECTOR = (() => {
     for (const b of imgs) { const cv = await aCanvas(b); const r = await w.recognize(cv); texto += '\n' + (r.data && r.data.text || ''); }
     return LECTURA.leer(texto);
   }
+  // Lectura con Claude (función leer-tarjeta en Supabase). Si no está lista, se usa el lector gratuito.
+  let claudeNo = false;
+  async function aJpeg(blob) {
+    const bmp = await createImageBitmap(blob);
+    const esc = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * esc); cv.height = Math.round(bmp.height * esc);
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bmp, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/jpeg', 0.88);
+  }
+  async function leerConClaude(imgs) {
+    if (claudeNo) return null;
+    let r;
+    try {
+      const images = []; for (const b of imgs.slice(0, 4)) images.push(await aJpeg(b));
+      r = await fetch(`${SB_URL}/functions/v1/leer-tarjeta`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: TOKEN, images }) });
+    } catch (e) { return null; }
+    if (r.status === 404) { claudeNo = true; return null; }
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (r.ok && j && j.ok && j.datos) return j.datos;
+    if (j && (j.error === 'sin_llave' || j.error === 'sin_saldo')) { claudeNo = true; if (j.error === 'sin_saldo') console.warn('Lectura con Claude: sin saldo'); }
+    return null;
+  }
   return {
     async json(_prompt, opts) {
-      try { return await leerImagenes((opts && opts.images) || []); }
+      const imgs = (opts && opts.images) || [];
+      const c = await leerConClaude(imgs);
+      if (c) return c;
+      try { return await leerImagenes(imgs); }
       catch (e) { const x = new Error('lectura'); x.code = 'image_rejected'; throw x; }
     },
     async limits() { return { images: { maxCount: 2 } }; }
@@ -3696,7 +3729,7 @@ async function handleFiles(files){
   for (const f of files) {
     try {
       if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) { for (const p of await pagesFromPdf(f)) sources.push(p); }
-      else if (/\.docx$/i.test(f.name) || /wordprocessingml/.test(f.type)) { const cvs = await canvasesFromDocx(f); if (cvs.length) sources.push({ canvases: cvs, label: f.name }); else toast(`El Word "${f.name}" no tiene imágenes de la tarjeta.`); }
+      else if (/\.docx$/i.test(f.name) || /wordprocessingml/.test(f.type)) { const cvs = await canvasesFromDocx(f); cvs.forEach((cv, i) => sources.push({ canvas: cv, label: `${f.name} · imagen ${i + 1}` })); if (!cvs.length) toast(`El Word "${f.name}" no tiene imágenes de la tarjeta.`); }
       else if (/^image\//.test(f.type)) sources.push({ canvas: await canvasFromImage(f), label: f.name });
       else toast(`No se puede leer "${f.name}". Use JPG, PNG, PDF o Word.`);
     } catch (e) { toast(`No se pudo abrir "${f.name}".`); }
