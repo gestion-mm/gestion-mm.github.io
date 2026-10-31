@@ -12,6 +12,7 @@
 /* ===== Portal Gestión M&M: inicio de sesión, conexión con Supabase y puente con la aplicación ===== */
 (() => {
 const SB_URL = 'https://frmgvszskejtwznleeui.supabase.co', SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZybWd2c3pza2VqdHd6bmxlZXVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMyMTczNjgsImV4cCI6MjEwODc5MzM2OH0.UyuIFRTJGGgOyouWpWcdkVoVii_GBK0AT-oj7rksenc';
+const PERITAJE_GS = 'https://script.google.com/macros/s/AKfycbwmDjmInxI0mM9STt-7kuez0saHcWAx3zsEhidBIfSNT5j8MVM0qltXXjuk7Rxp0YE/exec'; // puente de Google para los peritajes del Drive
 const LAZY = new Set(['plantillas', 'base_motos', 'base_lev']);
 const POLL_MS = 10000;
 const $ = s => document.querySelector(s);
@@ -514,11 +515,21 @@ const PORTAL = window.PORTAL = {
     } catch (e) { return 'No se pudo guardar la contraseña. Inténtalo de nuevo.'; }
   },
   async peritaje(cliente, pdv) {
-    let r;
-    try { r = await fetch(`${SB_URL}/functions/v1/peritaje`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: TOKEN, cliente, pdv }) }); }
-    catch (e) { return { error: 'red' }; }
-    if (r.status === 404) return { error: 'sin_configurar' };
-    try { return await r.json(); } catch (e) { return { error: 'drive' }; }
+    const ctl = new AbortController(), reloj = setTimeout(() => ctl.abort(), 60000);
+    try {
+      let r;
+      if (/^https:\/\/script\.google\.com\//.test(PERITAJE_GS)) {
+        // directo al puente de Google (texto simple: no necesita permisos especiales del navegador)
+        r = await fetch(PERITAJE_GS, { method: 'POST', body: JSON.stringify({ token: TOKEN, cliente, pdv }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow', signal: ctl.signal });
+      } else {
+        r = await fetch(`${SB_URL}/functions/v1/peritaje`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: TOKEN, cliente, pdv }), signal: ctl.signal });
+        if (r.status === 404) return { error: 'sin_configurar' };
+      }
+      const t = await r.text();
+      try { return JSON.parse(t); } catch (e) { return { error: 'drive', detalle: 'Respuesta ' + r.status + ': ' + t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 120) }; }
+    } catch (e) {
+      return { error: e && e.name === 'AbortError' ? 'tiempo' : 'red', detalle: String(e && e.message || e).slice(0, 120) };
+    } finally { clearTimeout(reloj); }
   },
   async recargarUsuarios() {
     USUARIOS = await conToken('mm_usuarios_lista');
@@ -2433,7 +2444,10 @@ async function solicitarPeritaje(ro){
   let r; try { r = await window.PORTAL.peritaje(cliente, f.pdv || ''); } catch (e) { r = {error: String(e && e.message || e)}; }
   btn.disabled = false; btn.textContent = 'Solicitar peritaje';
   if (!r || r.error) {
-    msg.innerHTML = `<span class="rojo">${r && r.error === 'sin_configurar' ? 'La conexión con el Drive todavía no está lista en Supabase.' : r && r.error === 'permiso' ? 'Su usuario no puede consultar peritajes.' : 'No se pudo consultar el Drive. Intente otra vez en un momento.'}</span>`;
+    const e = r && r.error, txtErr = e === 'sin_configurar' ? 'La conexión con el Drive todavía no está lista.' : e === 'permiso' ? 'Su usuario no puede consultar peritajes.'
+      : e === 'sesion' ? 'Su sesión venció. Salga y vuelva a entrar.' : e === 'tiempo' ? 'El Drive tardó más de 1 minuto en responder. Intente otra vez.'
+      : e === 'red' ? 'No hubo conexión con el Drive. Revise el internet e intente otra vez.' : 'No se pudo consultar el Drive. Intente otra vez en un momento.';
+    msg.innerHTML = `<span class="rojo">${txtErr}</span>${r && r.detalle ? `<div class="muted small" style="margin-top:4px">Detalle: ${esc(r.detalle)}</div>` : ''}`;
     return;
   }
   const enc = r.encontrados || [];
