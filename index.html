@@ -513,6 +513,13 @@ const PORTAL = window.PORTAL = {
       return '';
     } catch (e) { return 'No se pudo guardar la contraseña. Inténtalo de nuevo.'; }
   },
+  async peritaje(cliente, pdv) {
+    let r;
+    try { r = await fetch(`${SB_URL}/functions/v1/peritaje`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: TOKEN, cliente, pdv }) }); }
+    catch (e) { return { error: 'red' }; }
+    if (r.status === 404) return { error: 'sin_configurar' };
+    try { return await r.json(); } catch (e) { return { error: 'drive' }; }
+  },
   async recargarUsuarios() {
     USUARIOS = await conToken('mm_usuarios_lista');
     PORTAL._loginsSubs.forEach(fn => { try { fn(); } catch (e) {} });
@@ -2310,6 +2317,7 @@ function openMoto(id){
   $('#f_tlEntrada').addEventListener('change', () => { if (!$('#f_tlLista').value && $('#f_tlEntrada').value) $('#f_tlLista').value = addHabiles($('#f_tlEntrada').value, 8); });
   S.editCur = cur;
   drawRep(ro);
+  if ($('#repPer')) $('#repPer').onclick = () => solicitarPeritaje(ro);
   if ($('#repAdd')) $('#repAdd').onclick = () => { S.editRep.push({cant:1, codigo:'', ref:'', tipo:'Indispensable', origen:'Original', precio:0, disp:'Sí'}); drawRep(ro); };
   ['Ret','Vta'].forEach(k => document.querySelectorAll(`input[name="ap${k}"]`).forEach(rb => rb.onchange = () => { const box = $(`#ap${k}Box`); if (box) { box.hidden = rb.value !== 'no'; if (rb.value === 'no') $(`#ap${k}Valor`).focus(); } }));
   if ($('#apOk')) $('#apOk').onclick = () => aprobar(cur, true);
@@ -2401,15 +2409,63 @@ function peritajeSection(input, cur, ro){
     <details class="hist-box rep-box" style="margin-top:14px"><summary class="btn">Cotización de repuestos <span id="repSum" class="small muted" style="margin-left:6px"></span> ▾</summary>
     <div class="tbl-wrap" style="margin-top:8px"><table class="rep"><thead><tr><th>Cant.</th><th>Código</th><th>Referencia / repuesto</th><th>Tipo</th><th>Original o genérico</th><th class="num">Precio unitario</th><th class="num">Total</th><th>Disponible en PDV</th><th></th></tr></thead>
       <tbody id="repBody"></tbody><tfoot><tr><td colspan="6">Total repuestos</td><td class="num" id="repTot">$0</td><td colspan="2"></td></tr></tfoot></table></div>
-    <div class="nov-actions" style="margin-top:8px">${ro ? '' : '<button type="button" class="btn" id="repAdd">+ Agregar repuesto</button>'}${S.downloads ? '<button type="button" class="btn" id="xlsPer">Descargar cotización en Excel</button>' : ''}</div>
+    <div class="nov-actions" style="margin-top:8px">${ro ? '' : '<button type="button" class="btn" id="repPer" style="background:var(--red);border-color:var(--red);color:#fff">Solicitar peritaje</button><button type="button" class="btn" id="repAdd">+ Agregar repuesto</button>'}${S.downloads ? '<button type="button" class="btn" id="xlsPer">Descargar cotización en Excel</button>' : ''}</div>
+    <div id="repPerMsg" class="small" style="margin-top:8px"></div>
     </details>
   </fieldset>`;
 }
+/* ---- Solicitar peritaje: trae del Drive los repuestos del peritaje del cliente ---- */
+function _perMap(p){
+  const t = v => { const n = String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase(); return n; };
+  return (p.repuestos || []).map(x => ({
+    cant: +x.cant || 1, codigo: String(x.codigo || ''), ref: String(x.ref || ''),
+    tipo: /INDISP/.test(t(x.tipo)) ? 'Indispensable' : /OPCION/.test(t(x.tipo)) ? 'Opcional' : /REUTIL/.test(t(x.tipo)) ? 'Reutilizable' : '',
+    origen: /ORIG/.test(t(x.origen)) ? 'Original' : /GENER/.test(t(x.origen)) ? 'Genérico' : '',
+    precio: Math.round(+x.precio || 0), disp: /^S/.test(t(x.disp)) ? 'Sí' : /^N/.test(t(x.disp)) ? 'No' : ''
+  }));
+}
+async function solicitarPeritaje(ro){
+  const msg = $('#repPerMsg'), btn = $('#repPer'); if (!msg || !btn) return;
+  const f = {...(S.editCur || {}), ...readForm()};
+  const cliente = String(f.deudor || '').trim();
+  if (!cliente) { msg.innerHTML = '<span class="rojo">Primero escriba el nombre del deudor.</span>'; return; }
+  btn.disabled = true; btn.textContent = 'Buscando en el Drive…'; msg.textContent = '';
+  let r; try { r = await window.PORTAL.peritaje(cliente, f.pdv || ''); } catch (e) { r = {error: String(e && e.message || e)}; }
+  btn.disabled = false; btn.textContent = 'Solicitar peritaje';
+  if (!r || r.error) {
+    msg.innerHTML = `<span class="rojo">${r && r.error === 'sin_configurar' ? 'La conexión con el Drive todavía no está lista en Supabase.' : r && r.error === 'permiso' ? 'Su usuario no puede consultar peritajes.' : 'No se pudo consultar el Drive. Intente otra vez en un momento.'}</span>`;
+    return;
+  }
+  const enc = r.encontrados || [];
+  if (!enc.length) { msg.innerHTML = `<span class="rojo">No encontré un peritaje de <b>${esc(cliente)}</b> en el Drive.</span> Revise que el nombre del cliente esté escrito igual en el Excel del peritaje.`; return; }
+  const usar = p => {
+    const filas = _perMap(p);
+    const poner = () => {
+      S.editRep = filas; drawRep(ro); avCalcLive();
+      const avisos = [];
+      if (!p.mismoPunto) avisos.push(`está en la hoja <b>${esc(p.hoja)}</b>, que no es el punto de venta de la moto`);
+      if (p.coincide < 1) avisos.push(`en el Excel el cliente aparece como <b>${esc(p.cliente)}</b>`);
+      msg.innerHTML = `<span class="chip pill-ok">Repuestos traídos del Drive</span> <span class="muted">${esc(p.archivo)} · hoja ${esc(p.hoja)} · ${filas.length} ${filas.length === 1 ? 'repuesto' : 'repuestos'} · ${money(p.total) || '$0'}</span>` +
+        (avisos.length ? `<div class="rojo" style="margin-top:4px">Revise: ${avisos.join('; ')}.</div>` : '') +
+        '<div class="muted" style="margin-top:4px">Puede corregir cualquier repuesto en la tabla. Se guarda cuando guarde la moto.</div>';
+    };
+    const hay = (S.editRep || []).filter(x => x.ref || x.codigo || +x.precio).length;
+    if (!hay) return poner();
+    msg.innerHTML = `<div class="revisar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">Ya hay ${hay} ${hay === 1 ? 'repuesto' : 'repuestos'} en la cotización. ¿Los reemplazo por los ${filas.length} del peritaje?
+      <button type="button" class="btn primary" id="perSi" style="min-height:32px">Reemplazar</button><button type="button" class="btn" id="perNo" style="min-height:32px">Cancelar</button></div>`;
+    $('#perSi').onclick = poner; $('#perNo').onclick = () => { msg.textContent = ''; };
+  };
+  if (enc.length === 1) return usar(enc[0]);
+  msg.innerHTML = `<div class="small" style="margin-bottom:6px">Encontré ${enc.length} peritajes para este cliente. ¿Cuál traigo?</div>` +
+    enc.map((p, i) => `<button type="button" class="btn" data-per="${i}" style="display:block;width:100%;text-align:left;margin-bottom:6px"><b>${esc(p.cliente)}</b> · ${esc(p.archivo)} · hoja ${esc(p.hoja)}${p.retencion ? ' · retención ' + esc(String(p.retencion).slice(0, 10)) : ''} · ${p.repuestos.length} repuestos · ${money(p.total) || '$0'}${p.mismoPunto ? ' <span class="chip pill-ok">mismo punto</span>' : ''}</button>`).join('');
+  msg.querySelectorAll('[data-per]').forEach(b => b.onclick = () => usar(enc[+b.dataset.per]));
+}
+
 function drawRep(ro){
   const body = $('#repBody'); if (!body) return;
   const sel = (i, k, opts) => `<select data-r="${i}" data-k="${k}" ${ro?'disabled':''}><option></option>${opts.map(o => `<option ${S.editRep[i][k]===o?'selected':''}>${o}</option>`).join('')}</select>`;
   const inp = (i, k, w, num) => `<input data-r="${i}" data-k="${k}" ${num?'inputmode="numeric"':''} style="width:${w}" value="${esc(num && S.editRep[i][k] ? (+S.editRep[i][k]).toLocaleString('es-CO') : (S.editRep[i][k] ?? ''))}" ${ro?'disabled':''}>`;
-  body.innerHTML = S.editRep.map((x,i) => `<tr><td>${inp(i,'cant','56px',1)}</td><td>${inp(i,'codigo','90px')}</td><td>${inp(i,'ref','220px')}</td><td>${sel(i,'tipo',['Indispensable','Opcional','Reutilizable'])}</td><td>${sel(i,'origen',['Original','Genérico'])}</td><td class="num">${inp(i,'precio','110px',1)}</td><td class="num" data-tot="${i}">${money((+x.cant||0)*(+x.precio||0))||'$0'}</td><td>${sel(i,'disp',['Sí','No'])}</td><td>${ro?'':`<button type="button" class="btn danger" data-del="${i}" aria-label="Quitar repuesto" style="min-height:30px;padding:0 9px">×</button>`}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">Sin repuestos cotizados.</td></tr>';
+  body.innerHTML = S.editRep.map((x,i) => `<tr><td>${inp(i,'cant','56px',1)}</td><td>${inp(i,'codigo','90px')}</td><td>${inp(i,'ref','220px')}</td><td>${sel(i,'tipo',['Indispensable','Opcional','Reutilizable'])}</td><td>${sel(i,'origen',['Original','Genérico'])}</td><td class="num">${inp(i,'precio','110px',1)}</td><td class="num" data-tot="${i}">${money((+x.cant||0)*(+x.precio||0))||'$0'}</td><td>${sel(i,'disp',['Sí','No'])}</td><td>${ro?'':`<button type="button" class="btn danger" data-del="${i}" aria-label="Quitar repuesto" style="min-height:30px;padding:0 9px">×</button>`}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">Todavía no hay repuestos en la cotización.</td></tr>';
   const tot = () => { const t = S.editRep.reduce((s,x)=>s+(+x.cant||0)*(+x.precio||0),0); $('#repTot').textContent = money(t) || '$0';
     const sm = $('#repSum'); if (sm) { const n = S.editRep.filter(x => x.ref || x.codigo || +x.precio).length; sm.textContent = n ? `${n} ${n === 1 ? 'repuesto' : 'repuestos'} · ${money(t) || '$0'}` : 'sin repuestos'; } };
   body.querySelectorAll('[data-r]').forEach(el => el.addEventListener(el.tagName==='SELECT'?'change':'input', () => {
@@ -4822,6 +4878,30 @@ async function llenarPlantilla(zip, l, d){
       if (typeof a === 'string' && /^(MOTOS|ELECTRO)$/i.test(a.trim()) && typeof c === 'string' && /sem\s*1/i.test(c)) { let t = r + 1; while (H.filas.has(t + 1) && !/^total$/i.test(String(valor(H.celdas.get('A' + t)) || '').trim())) t++; bloques.push({r, t}); } }
     const mesDe = b => { const cnt = {}; for (let r = b.r + 1; r < b.t; r++) { const f = formula(H, H.celdas.get('C' + r)); if (!f) continue; const m = f.match(/^\+?(?:'([^']+)'|([A-Za-z0-9_ ]+))!\$?[A-Z]+\$?(\d+)/); if (!m) continue; const nm = m[1] || m[2], MM = mapas[nm.trim()] || mapas[nm]; const k = MM && MM.inv.get(+m[3]); if (k) cnt[k] = (cnt[k] || 0) + 1; } return Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || null; };
     const hojaDe = (r) => { const f = formula(H, H.celdas.get('C' + r)); const m = f && f.match(/^\+?(?:'([^']+)'|([A-Za-z0-9_ ]+))!/); return m ? (m[1] || m[2]).trim() : null; };
+    // repair: a row must take its data from the sheet of its own point (e.g. "Casa M/bano" -> CASAMON, not PUENUE)
+    {
+      const ALIAS = {motos: {'cauca':'CAU','caucasia':'CAU','tierra':'TIE','tierralta':'TIE','puerto':'PTO','puerto libertador':'PTO','ayapel':'AYA','cerete':'CER1','cerete 1':'CER1','cerete 2':'CER2','majagual':'MAJ','troncal':'TRON','la troncal':'TRON','planeta':'PLA','planeta rica':'PLA','montelibano':'MON','m/bano':'MON','cargueros':'CARG','sincelejo':'SINC','medellin':'MED','financiera':'FINAN','lorica':'LORI','externa':'EXT','la apartada':'LA APAR','pueblo nuevo':'PUENUE','casa m/bano':'CASAMON','casanova m/bano':'CASAMON','casanova montelibano':'CASAMON','taraza':'TAR'},
+        electro: {'puerto':'CASPUE','ayapel':'CASAYA','tierra':'TIE','tierralta':'TIE','casanova puerto':'CASPUE','casanova ayapel':'CASAYA','casanoa ayapel':'CASAYA','majagual':'MAJ','troncal':'TRON','la troncal':'TRON','planeta':'PLA','planeta rica':'PLA','montelibano':'MON','canova maja':'CASMAJ','casanova majagual':'CASMAJ','caucasia':'CAU','puerto l':'PUERTO','empleados':'EMPLE','casanova la apartada':'CASAPAR','casanova m/bano':'CASAMON','casa m/bano':'CASAMON','casanova montelibano':'CASAMON','pueblo nuevo':'PUENUE','cerete':'CER1','cerete 1':'CER1','sincelejo':'SINC','cerete 2':'CER2'}};
+      const nrm = x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const mapa = {...(ALIAS[l] || {})}; for (const [c, nmb] of Object.entries((CFG.nombres || {})[l] || {})) mapa[nrm(nmb)] = c;
+      const existen = new Set(hojasWb.map(x => x.name.trim().toUpperCase()));
+      const rx = /^(\+?)(?:'([^']+)'|([A-Za-z0-9_ ]+))!/;
+      for (const b of bloques) for (let r = b.r + 1; r < b.t; r++) {
+        const cod = mapa[nrm(valor(H.celdas.get('A' + r)))]; if (!cod || !existen.has(cod.toUpperCase())) continue;
+        let arreglo = null;
+        for (const col of ['C', 'D', 'E', 'F', 'G']) {
+          const c = H.celdas.get(col + r), fe = c && c.getElementsByTagName('f')[0]; if (!fe) continue;
+          const f = formula(H, c), m = f && f.match(rx); if (!m) continue;
+          const hoja = (m[2] || m[3]).trim(); if (hoja.toUpperCase() === cod.toUpperCase() || !existen.has(hoja.toUpperCase())) continue;
+          if (fe.getAttribute('t') === 'shared' && fe.getAttribute('ref')) continue;
+          fe.textContent = f.replace(rx, m[1] + (/\s/.test(cod) ? `'${cod}'` : cod) + '!');
+          ['t', 'si', 'ref'].forEach(a => fe.removeAttribute(a));
+          const v = c.getElementsByTagName('v')[0]; if (v) c.removeChild(v);
+          H.cambio = true; arreglo = hoja;
+        }
+        if (arreglo) avisos.push(`Se corrigió la fila "${valor(H.celdas.get('A' + r))}" de la hoja ${h.name} (fila ${r}): tomaba los datos de la hoja ${arreglo} y ahora los toma de ${cod}.`);
+      }
+    }
     bloques.forEach(b => b.k = mesDe(b));
     for (const b of bloques.slice()) {
       if (!b.k) continue; const [y, m] = b.k.split('-').map(Number), cart = d.cartera(`${y}-${String(m).padStart(2, '0')}`); if (!cart) continue;
