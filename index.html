@@ -1642,7 +1642,7 @@ function hojaAvaluo(r){
     ${row('Deuda en cuotas', signo(a.deudaCuotas), 'sub')}
     ${row('Menos retoma', '− ' + m(a.retoma))}
     ${row('Más SOAT, tecno, traspaso y placa', '+ ' + m(a.papeles))}
-    ${row(`Más otros gastos (lo que quedó debiendo: IXM ${m(a.ixm)} + gastos varios (retención, acarreo, lavada, visita) ${m(a.gastosRet)})`, '+ ' + m(a.otros))}
+    ${a.otros === a.otrosAuto ? row(`Más otros gastos (lo que quedó debiendo: IXM ${m(a.ixm)} + gastos varios (retención, acarreo, lavada, visita) ${m(a.gastosRet)})`, '+ ' + m(a.otros)) : row(`Más otros gastos <b>escritos a mano en «Otros gastos»</b><br><span class="rojo small">Ojo: lo que el cliente quedó debiendo es IXM ${m(a.ixm)} + gastos varios ${m(a.gastosRet)} = <b>${m(a.otrosAuto)}</b>. Si debe sumarse todo, borra el valor de «Otros gastos» o escribe ${m(a.otrosAuto)}.</span>`, '+ ' + m(a.otros))}
     ${row(a.saldoCliente > 0 ? '<span class="rojo">Saldo pendiente del cliente</span>' : a.saldoCliente < 0 ? 'Saldo a favor del cliente' : 'El cliente queda a paz y salvo', a.saldoCliente > 0 ? `<span class="rojo">${m(a.saldoCliente)}</span>` : a.saldoCliente ? m(Math.abs(a.saldoCliente)) : '$0', 'grand' + (a.saldoCliente > 0 ? ' pend' : ''))}
   </tbody></table></div>`;
 }
