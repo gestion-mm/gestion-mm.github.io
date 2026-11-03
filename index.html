@@ -1704,7 +1704,7 @@ const saldoTotal = r => ABONO_K.reduce((s,[k, , c]) => s + Math.max(0, saldoDe(r
 const descPend = r => r.descuento && r.descuento.estado === 'Pendiente';
 const gastosSaldo = r => gastos(r) - GASTO_AK.reduce((s,k) => s + abonado(r,k) + descAprob(r,k), 0);
 const totalAbono = a => ABONO_K.reduce((s,[k]) => s + (+a[k] || 0), 0);
-const cobroPend = r => r.cobroEstado === 'Pendiente' && gastosSaldo(r) > 0;
+const cobroPend = r => r.cobroEstado === 'Pendiente' && gastosSaldo(r) > 0 && r.retoma !== 'Sí' && !['Vendida','Chatarrizada'].includes(r.estado);
 const trasPend = r => r.estado === 'Vendida' && (r.traspaso === 'Pendiente' || r.traspaso === 'En trámite' || (r.traspaso === 'Realizado' && !!r.vtValorFinal && !(r.fotos||[]).some(f => f.tag === 'Tarjeta traspasada')));
 
 async function names(ids){
@@ -3096,7 +3096,9 @@ async function saveMoto(prev, isNew, close, draft){
   const pend = [];
   const PISTA = ' Si todavía no lo tienes, toca «Guardar avance» para no perder lo que llevas y lo completas después.';
   const relajado = () => !isNew && !draft && S.base.some(b => b.id === prev.id) && v.estado === prev.estado;
-  const stop = msg => { if (relajado()) return false; if (draft) { pend.push(String(msg).replace(/\.$/,'')); return false; } err.textContent = msg + PISTA; return true; };
+  // las motos que ya existían antes de exigir todos los pasos se guardan igual; lo que falte queda en la lista de pendientes
+  const antigua = !isNew && (S.base.some(b => b.id === prev.id) || !prev.createdAt || prev.createdAt < '2026-11-04T05:00:00Z');
+  const stop = msg => { if (relajado()) return false; if (draft || (antigua && !/por qué/.test(msg))) { pend.push(String(msg).replace(/\.$/,'')); return false; } err.textContent = msg + PISTA; return true; };
   // motos that came in the initial spreadsheet are not asked for the basic data they never had
   const esBase = !isNew && S.base.some(b => b.id === prev.id);
   const comp = msg => esBase ? false : stop(msg);
@@ -3250,12 +3252,12 @@ async function saveMoto(prev, isNew, close, draft){
   const entry = isNew ? {at: now, by: actorId(), nuevo: true, cambios: []} : {at: now, by: actorId(), cambios, ...(nota ? {nota} : {})};
   const doc = {...(isNew ? {} : prev), ...v, id, numero: prev.numero, historial: [...(prev.historial||[]), entry].slice(-30),
     updatedAt: now, updatedBy: S.uid, createdAt: prev.createdAt || (isNew ? now : null), createdBy: prev.createdBy || (isNew ? S.uid : null)};
-  { const tod = [...(draft ? pend : []), ...vendPend]; doc.faltan = tod.length ? tod : null; }
+  { const tod = [...new Set([...(draft || antigua ? pend : []), ...vendPend])]; doc.faltan = tod.length ? tod : null; }
   for (const k in doc) if (doc[k] === undefined) delete doc[k];
   btn.disabled = true; btn.textContent = 'Guardando…';
   try {
     await S.db.collection('motos').doc(id).set(doc);
-    S.over[id] = doc; close(); toast(draft ? (perAviso ? perAviso + ' ' : '') + 'Avance guardado' + (estadoQuieto ? `. El estado sigue en ${estadoQuieto} hasta que completes lo que falta` : '') + (pend.length ? `. Quedan ${pend.length} ${pend.length===1?'cosa pendiente':'cosas pendientes'}; las ves al abrir la moto.` : '.') : (perAviso || (isNew ? `Moto N.° ${doc.numero} registrada` : 'Cambios guardados')));
+    S.over[id] = doc; close(); toast(draft ? (perAviso ? perAviso + ' ' : '') + 'Avance guardado' + (estadoQuieto ? `. El estado sigue en ${estadoQuieto} hasta que completes lo que falta` : '') + (pend.length ? `. Quedan ${pend.length} ${pend.length===1?'cosa pendiente':'cosas pendientes'}; las ves al abrir la moto.` : '.') : (perAviso || (isNew ? `Moto N.° ${doc.numero} registrada` : 'Cambios guardados')) + (antigua && doc.faltan && doc.faltan.length ? `. Quedan ${doc.faltan.length} ${doc.faltan.length === 1 ? 'cosa pendiente' : 'cosas pendientes'}; las ves al abrir la moto.` : ''));
   } catch (e) {
     btn.disabled = false; btn.textContent = draft ? 'Guardar avance' : (isNew ? 'Registrar moto' : 'Guardar cambios');
     if (e && e.code === 'invalid_argument') { S.readOnly = true; S.baseRO = true; err.textContent = 'No tienes permiso para guardar cambios en este tablero. Pídele a quien lo administra que te dé acceso de edición.'; }
