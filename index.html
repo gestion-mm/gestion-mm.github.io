@@ -2370,9 +2370,10 @@ function openMoto(id){
     ['per', 'Peritaje', '', ['Peritaje']],
     ['aval', 'Avalúo', '', ['Avalúo']],
     ['taller', 'Taller', '', ['Taller']],
-    ['venta', 'Para la venta', 'Retoma y venta', ['Retoma','Para la venta']],
+    ['retoma', 'Retoma', 'Bajar la moto de la cartera y el saldo del cliente', ['Retoma']],
+    ['venta', 'Para la venta', '', ['Para la venta']],
     ['fin', 'Salida', 'Venta, traspaso o recuperación', ['Venta y traspaso','Salida']]];
-  const ABIERTAS = {'En sala':['sala'],'Peritaje':['per'],'Avalúo':['aval'],'En taller':['taller','venta'],'Para la venta':['venta'],'Vendida':['fin'],'Recuperada por el cliente':['fin','sala'],'Chatarrizada':['venta','fin'],'En patios (embargo)':['patios']};
+  const ABIERTAS = {'En sala':['sala'],'Peritaje':['per'],'Avalúo':['aval'],'En taller':['taller','retoma'],'Para la venta':['venta'],'Vendida':['fin'],'Recuperada por el cliente':['fin','sala'],'Chatarrizada':['retoma','fin'],'En patios (embargo)':['patios']};
   const etapaBox = {};
   ETAPAS.forEach(([k, titulo, sub, secciones]) => {
     const fss = secciones.map(n => document.querySelector(`.sheet fieldset[data-fs="${n}"]`)).filter(Boolean);
