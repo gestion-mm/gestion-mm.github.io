@@ -976,6 +976,7 @@ table.rep input,table.rep select{min-height:32px;padding:4px 6px}
 #mod-lev select,#mod-lev input[type=text],#mod-lev input[type=search],#mod-lev textarea{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;min-width:0}
 .mod-card.ele{border-left-color:#0e8a7a}
 .e-plega{border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:var(--surface);margin:0 0 12px}.e-plega>summary{cursor:pointer;font-weight:700;color:var(--ink)}
+.pts-l{list-style:none;margin:0;padding:0;display:grid;gap:6px}.pts-l li{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:10px;padding:6px 6px 6px 12px}
 .ele-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-top:18px}
 #mod-lev .lote{position:sticky;top:calc(env(safe-area-inset-top,0px) + 112px);z-index:5;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--brand-red);border-radius:10px;padding:12px 14px;box-shadow:var(--shadow)}
 #mod-lev .lote-txt{display:flex;flex-direction:column;gap:2px}
@@ -1908,6 +1909,7 @@ function vMotos(all){
     <label class="chk"><input type="checkbox" id="fRep" ${S.f.repetidas?'checked':''}> Retenidas más de una vez</label>
     ${S.owner && Object.keys(S.del).length ? `<label class="chk"><input type="checkbox" id="fDel" ${S.f.borradas?'checked':''}> Ver eliminadas (${Object.keys(S.del).length})</label>` : ''}
     ${S.readOnly||S.dbDown ? '' : '<button class="btn primary" id="newMoto">+ Nueva moto</button>'}
+    ${S.owner && !S.readOnly && !S.dbDown ? '<button class="btn" id="ptsBtn">Puntos de venta</button>' : ''}
     ${S.downloads ? '<button class="btn" id="csvMotos">Descargar CSV</button>' : ''}
   </div>
   ${S.fuzzy ? `<div class="banner" style="margin:0 0 10px">No hay ninguna moto con exactamente "${esc(S.f.text)}". Estas tienen un nombre parecido:</div>` : ''}
@@ -2128,6 +2130,7 @@ function bindView(){
   on('pgPrev','onclick', () => { S.f.page--; render(); });
   on('pgNext','onclick', () => { S.f.page++; render(); });
   on('newMoto','onclick', () => openMoto(null));
+  on('ptsBtn','onclick', () => abrirPuntos()); puntosIniciar();
   on('revAll','onclick', () => markReviewed(records().filter(isNovedad).map(r => r.id)));
   on('qy','onchange', e => { S.q.y = +e.target.value; render(); });
   on('qt','onchange', e => { S.q.t = +e.target.value; render(); });
@@ -3510,6 +3513,7 @@ const ePuedeEditar = () => !!S.db && !S.readOnly && !S.dbDown && !S.pendiente &&
 /* ---------- datos ---------- */
 function eIniciar(){
   if (E.iniciado || !S.db) return; E.iniciado = true;
+  puntosIniciar();
   S.db.collection('electro').onSnapshot(snap => {
     const o = {}; snap.docs.forEach(d => { o[d.id] = {...d.data(), id: d.id}; });
     E.docs = o; E.cargado = true; eRefrescar();
@@ -3550,6 +3554,7 @@ function eRender(){
       <select id="eEstado" aria-label="Estado"><option value="">Todos los estados</option>${E_ESTADOS.map(s => `<option ${s === f.estado ? 'selected' : ''}>${s}</option>`).join('')}<option value="_venc" ${f.estado === '_venc' ? 'selected' : ''}>Con ${E_PLAZO} días o más en sala</option><option value="_act" ${f.estado === '_act' ? 'selected' : ''}>Activos de la empresa</option><option value="_ret" ${f.estado === '_ret' ? 'selected' : ''}>Retoma por aprobar</option></select>
       ${pdvs.length > 1 ? `<select id="ePdv" aria-label="Punto"><option value="">Todos los puntos</option>${pdvs.map(p => `<option ${p === f.pdv ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>` : ''}
       <button class="btn" id="eCsv">Descargar CSV</button>
+      ${S.owner && !S.readOnly ? '<button class="btn" id="ePts">Puntos de venta</button>' : ''}
     </div>
     <div class="tbl-wrap"><table><thead><tr><th class="num">N.°</th><th>Retención</th><th>Punto</th><th>Deudor</th><th>Artículo</th><th>Estado</th><th class="num">Días</th></tr></thead><tbody>
     ${lista.map(r => { const d = r.fechaRecibo ? daysBetween(r.fechaRecibo, r.fechaSalida || t) : ''; return `<tr class="click" data-eid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.fechaRecibo)}</td><td>${esc(r.pdv || '')}</td><td>${esc(r.deudor || '')}</td><td>${esc(eArt(r))}</td><td>${eChip(r)}${r.faltan && r.faltan.length ? ' <span class="chip pill-warn">Faltan datos</span>' : ''}</td><td class="num">${eVencido(r) ? `<span class="chip ${d - E_PLAZO >= 15 ? 'pill-red' : 'pill-warn'}">${d}</span>` : d}</td></tr>`; }).join('')
@@ -3562,6 +3567,7 @@ function eRender(){
   main.querySelectorAll('[data-efil]').forEach(x => x.onclick = () => { E.f.estado = x.dataset.efil; eRender(); });
   main.querySelectorAll('tr[data-eid]').forEach(tr => { tr.onclick = () => eAbrir(tr.dataset.eid); tr.onkeydown = e => { if (e.key === 'Enter') eAbrir(tr.dataset.eid); }; });
   $('#eCsv').onclick = () => eCsv(lista);
+  if ($('#ePts')) $('#ePts').onclick = () => abrirPuntos();
 }
 function eCsv(lista){
   const cols = [['numero','N.°'],['fechaRecibo','Fecha de retención'],['pdv','Punto'],['deudor','Deudor'],['tipo','Tipo'],['marca','Marca'],['referencia','Referencia'],['estado','Estado'],
@@ -3824,6 +3830,57 @@ window.ELE = {
   pend: () => isJefe() ? eLista().filter(eRetPend) : [],
   resumen(){ const all = eLista(); return {cargado: E.cargado, enSala: all.filter(r => r.estado === 'En sala').length, venc: all.filter(eVencido).length, pend: all.filter(eRetPend).length, venta: all.filter(r => r.estado === 'Para la venta').length, jefe: isJefe(), plazo: E_PLAZO, puede: ePuedeEditar()}; }
 };
+
+/* ---------- Puntos de venta (Motos y Electrodomésticos): Kenny puede agregar puntos nuevos ---------- */
+var PTS = {extra: [], iniciado: false};
+const PDVS_BASE = [...PDVS];
+function puntosIniciar(){
+  if (PTS.iniciado || !S.db) return; PTS.iniciado = true;
+  S.db.doc('config/puntos_extra').onSnapshot(s => {
+    PTS.extra = s && s.exists ? (s.data().lista || []).filter(Boolean) : [];
+    for (const p of PTS.extra) { if (!PDVS.includes(p)) PDVS.push(p); if (typeof E_PDVS !== 'undefined' && !E_PDVS.includes(p)) E_PDVS.push(p); }
+    for (let i = PDVS.length - 1; i >= 0; i--) if (!PDVS_BASE.includes(PDVS[i]) && !PTS.extra.includes(PDVS[i])) PDVS.splice(i, 1);
+  }, () => {});
+}
+function abrirPuntos(){
+  puntosIniciar();
+  const root = $('#modal-root');
+  const pinta = () => {
+    const base = [...new Set([...PDVS_BASE, ...(typeof E_PDVS !== 'undefined' ? E_PDVS.filter(p => !PTS.extra.includes(p)) : [])])];
+    root.innerHTML = `<div class="overlay" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ptsT" style="max-width:560px">
+      <div class="sheet-head"><h2 id="ptsT">Puntos de venta</h2><button class="btn" id="ptsX">Cerrar</button></div>
+      <div class="sheet-body">
+        <p class="small muted" style="margin:0 0 10px">Sirven para <b>Motos retenidas</b> y <b>Electrodomésticos</b>. Los de Levantamientos se manejan en Levantamientos → Panel.</p>
+        <div class="fgrid"><div class="field wide"><label for="ptsN">Nombre del punto nuevo</label><input id="ptsN" placeholder="Ej.: CASANOVA SAHAGUN"></div></div>
+        <div class="nov-actions" style="margin-top:8px"><button class="btn primary" id="ptsAdd">+ Agregar punto de venta</button></div>
+        <p class="err" id="ptsErr" role="alert"></p>
+        ${PTS.extra.length ? `<h3 style="margin:14px 0 6px">Agregados por usted</h3><ul class="pts-l">${PTS.extra.map(p => `<li><span>${esc(p)}</span><button class="btn danger" data-ptsq="${esc(p)}" style="min-height:30px;padding:0 10px">Quitar</button></li>`).join('')}</ul>` : ''}
+        <details class="e-plega" style="margin-top:12px"><summary>Puntos que ya vienen en la aplicación (${base.length})</summary><p class="small" style="margin:8px 0 0">${base.map(esc).join(' · ')}</p></details>
+      </div></div></div>`;
+    const cerrar = () => { root.innerHTML = ''; try { render(); } catch (e) {} if (window.ELE && !document.getElementById('mod-ele').hidden) ELE.render(); };
+    $('#ptsX').onclick = cerrar; $('#ov').onclick = e => { if (e.target.id === 'ov') cerrar(); };
+    const guardar = async lista => { try { await S.db.doc('config/puntos_extra').set({lista, en: new Date().toISOString(), por: actorId()}); PTS.extra = lista;
+        for (const p of lista) { if (!PDVS.includes(p)) PDVS.push(p); if (typeof E_PDVS !== 'undefined' && !E_PDVS.includes(p)) E_PDVS.push(p); }
+        toast('Puntos de venta actualizados'); pinta(); } catch (e) { $('#ptsErr').textContent = 'No se pudo guardar. Intenta otra vez.'; } };
+    $('#ptsAdd').onclick = () => {
+      const n = $('#ptsN').value.replace(/\s+/g, ' ').trim().toUpperCase();
+      if (!n) { $('#ptsErr').textContent = 'Escribe el nombre del punto.'; return; }
+      const todos = [...PDVS, ...(typeof E_PDVS !== 'undefined' ? E_PDVS : []), ...PTS.extra].map(x => nid(x));
+      if (todos.includes(nid(n))) { $('#ptsErr').textContent = 'Ese punto ya existe.'; return; }
+      guardar([...PTS.extra, n]);
+    };
+    $('#ptsN').onkeydown = e => { if (e.key === 'Enter') $('#ptsAdd').click(); };
+    root.querySelectorAll('[data-ptsq]').forEach(b => b.onclick = () => {
+      const p = b.dataset.ptsq;
+      if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = '¿Seguro? Toca otra vez'; return; }
+      const i = PDVS.indexOf(p); if (i >= 0) PDVS.splice(i, 1);
+      if (typeof E_PDVS !== 'undefined') { const j = E_PDVS.indexOf(p); if (j >= 0) E_PDVS.splice(j, 1); }
+      guardar(PTS.extra.filter(x => x !== p));
+    });
+    setTimeout(() => $('#ptsN').focus(), 50);
+  };
+  pinta();
+}
 
 async function respaldo(tipo){
   if (!S.downloads) return;
@@ -4114,7 +4171,7 @@ boot();
 <script type="text/mm-app">
 (() => {
 "use strict";
-const PDVS_DEFAULT = ["Caucasia","La Troncal","Cereté 1","Cereté 2","Ayapel","Majagual","Planeta Rica","Montelíbano","Puerto Libertador","Sincelejo","Tierralta","Cargueros","Tarazá","Lorica","Pueblo Nuevo","Casanova Montelíbano","Casanova La Apartada"];
+const PDVS_DEFAULT = ["Caucasia","La Troncal","Cereté 1","Cereté 2","Ayapel","Majagual","Planeta Rica","Montelíbano","Puerto Libertador","Sincelejo","Tierralta","Cargueros","Tarazá","Lorica","Pueblo Nuevo","Santa Ana","Casanova Montelíbano","Casanova La Apartada"];
 let PDVS = [...PDVS_DEFAULT], PDVS_OFF = [];
 const COBRO = 20000;
 const MESES_L = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -4136,6 +4193,7 @@ function lsSet(k,v){ try { localStorage.setItem(k,v); } catch {} }
 
 /* ---------- datos ---------- */
 const HIST = JSON.parse($("#hist-data").textContent); // [placa, fecha, pdv, cliente, moto]
+HIST.forEach(h => { if (/^otro:\s*santa\s*ana$/i.test(String(h[2] || "").trim())) h[2] = "Santa Ana"; });
 const HIST_BY_PLACA = new Map();
 for (const h of HIST) { if (!HIST_BY_PLACA.has(h[0])) HIST_BY_PLACA.set(h[0], []); HIST_BY_PLACA.get(h[0]).push(h); }
 const TPL_B64 = $("#tpl-data").textContent.trim();
