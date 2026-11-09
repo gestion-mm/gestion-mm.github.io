@@ -4234,8 +4234,15 @@ function fillPdvSelect(sel, withAll){
   sel.innerHTML = "";
   if (withAll) sel.append(el("option", {value:""}, "Todos los puntos"));
   else sel.append(el("option", {value:""}, "Escoja…"));
-  for (const p of PDVS) sel.append(el("option", {value:p}, p));
+  for (const p of [...PDVS].sort((a, b) => a.localeCompare(b, "es"))) sel.append(el("option", {value:p}, p));
+  if (!withAll && ME.owner && DB) sel.append(el("option", {value:"__nuevo"}, "+ Agregar punto de venta…"));
 }
+// elegir "+ Agregar punto de venta…" lleva al recuadro de puntos (Panel) con el cursor listo para escribir
+document.addEventListener("change", e => {
+  const s = e.target; if (!(s instanceof HTMLSelectElement) || s.value !== "__nuevo") return;
+  s.value = ""; show("panel");
+  setTimeout(() => { const box = $("#lv-pdv-admin"); if (box) { box.scrollIntoView({block: "center", behavior: "smooth"}); box.classList.add("bell-flash"); setTimeout(() => box.classList.remove("bell-flash"), 2500); } const i = $("#lv-pdv-new"); if (i) i.focus(); }, 200);
+});
 fillPdvSelect($("#lv-pdv-main"), false);
 { const last = lsGet("lev_pdv"); if (last && PDVS.includes(last)) $("#lv-pdv-main").value = last; }
 $("#lv-pdv-main").addEventListener("change", e => { if (PDVS.includes(e.target.value)) lsSet("lev_pdv", e.target.value); });
@@ -4811,7 +4818,7 @@ async function savePdvs(activos, inactivos){
 function renderPdvAdmin(){
   const box = $("#lv-pdv-admin"); box.hidden = !(ME.owner && DB); if (box.hidden) return;
   const l = $("#lv-pdv-list"); l.innerHTML = "";
-  for (const p of PDVS) l.append(el("div", { class: "pdvrow" }, el("span", {}, p), el("button", { class: "btn small", type: "button", onclick: () => savePdvs(PDVS.filter(x => x !== p), [...PDVS_OFF, p]) }, "Desactivar")));
+  for (const p of [...PDVS].sort((a, b) => a.localeCompare(b, "es"))) l.append(el("div", { class: "pdvrow" }, el("span", {}, p), el("button", { class: "btn small", type: "button", onclick: () => savePdvs(PDVS.filter(x => x !== p), [...PDVS_OFF, p]) }, "Desactivar")));
   for (const p of PDVS_OFF) l.append(el("div", { class: "pdvrow" }, el("span", { class: "status" }, p + " (inactivo)"), el("button", { class: "btn small", type: "button", onclick: () => savePdvs([...PDVS, p], PDVS_OFF.filter(x => x !== p)) }, "Activar")));
 }
 $("#lv-pdv-add").addEventListener("click", () => {
@@ -4863,7 +4870,8 @@ show(["nuevo","registro","panel"].includes(lsGet("lev_tab")) ? lsGet("lev_tab") 
       if (!$("#lv-v-registro").hidden) renderRegistro(); if (!$("#lv-v-panel").hidden) renderPanel();
     }, () => toast("Se perdió la conexión con el registro. Recargue la página."));
     DB.doc("config/puntos").onSnapshot(s => {
-      if (s.exists) { const d = s.data(); PDVS = Array.isArray(d.activos) ? [...d.activos] : [...PDVS_DEFAULT]; PDVS_OFF = Array.isArray(d.inactivos) ? [...d.inactivos] : []; }
+      if (s.exists) { const d = s.data(); PDVS = Array.isArray(d.activos) ? [...d.activos] : [...PDVS_DEFAULT]; PDVS_OFF = Array.isArray(d.inactivos) ? [...d.inactivos] : [];
+        for (const p of PDVS_DEFAULT) if (!PDVS.includes(p) && !PDVS_OFF.includes(p)) PDVS.push(p); }
       applyPdvs(); renderPdvAdmin();
     }, () => {});
     DB.collection("lev_revisiones").limit(1000).onSnapshot(s => {
