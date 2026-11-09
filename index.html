@@ -1438,7 +1438,7 @@ const FIELDS = [
   {k:'vtRepFecha',l:'Fecha del cruce',t:'date',s:'Venta y traspaso',enc:1,g:'rep'},
   {k:'vtAutorizado',l:'Valor de venta autorizado',t:'money',s:'Para la venta',enc:1,hint:'Lo que cuesta la moto para la venta.'},
   {k:'vtFechaAut',l:'Fecha de autorización',t:'date',s:'Para la venta',enc:1},
-  {k:'fechaSalida',l:'Fecha de salida',t:'date',s:'Salida',hint:'Día en que la recuperó el cliente, se vendió o se chatarrizó.'},
+  {k:'fechaSalida',l:'Fecha de salida (fecha de la venta, de la recuperación o de la chatarra)',t:'date',s:'Salida',hint:'Día en que la recuperó el cliente, se vendió o se chatarrizó.'},
   {k:'valor',l:'Valor ($)',t:'money',s:'Salida',hint:'Recuperada: lo que pagó el cliente. Vendida: precio de venta.'},
   {k:'rc',l:'Recibo de caja (RC)',t:'text',s:'Salida'},
   {k:'comprador',l:'Comprador (a quién se le vendió)',t:'text',s:'Venta y traspaso',vreq:1,wide:1,g:'vta'},
@@ -1480,10 +1480,48 @@ const chip = st => st ? `<span class="chip ${ST_CLASS[st]||'st-sd'}">${esc(st)}<
 const plate = p => p ? `<span class="plate">${esc(String(p).toUpperCase())}</span>` : '<span class="muted small">sin placa</span>';
 function toast(msg){ const t = document.createElement('div'); t.className='toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(()=>t.remove(), Math.max(2600, Math.min(9000, msg.length * 55))); }
 
+/* Motos vendidas antes de la aplicación: punto de venta, comprador y modalidad salen de la observación
+   ("MOTO VENDIDA EN MONTELIBANO EL 08-JUL-25 A PEREZ JUAN (CONTADO)") cuando no están escritos */
+const VTA_ALIAS = [
+  [/CAR(?:C)?GUEROS?\s+CAU\w*|CAR(?:C)?GUEROS?\b/, 'CARGUERO CAUCASIA'],
+  [/CERETE\s*1\b/, 'CERETE 1'], [/CERETE\s*2\b/, 'CERETE 2'], [/CERETE\b/, 'CERETE'],
+  [/PUERTO\s+LIBERTADOR|PUE?R?TO\b/, 'PUERTO'],
+  [/PLANETA(?:\s+RICA)?/, 'PLANETA'],
+  [/MONTELIBAN\w*|M\/BANO|MONTELIVANO/, 'MONTELIBANO'],
+  [/TIE\w*\s?A\w*TA|TIERRA\s+ALTA|TIERRALA|TIERALARA|TIERRALTA|\bTIERRA\b/, 'TIERRALTA'],
+  [/(?:LA\s+)?TRONC\w*/, 'TRONCAL'],
+  [/C\w?UCASIA|LA\s+21\b/, 'CAUCASIA'],
+  [/MAJAGUAL/, 'MAJAGUAL'], [/AYAPEL/, 'AYAPEL'], [/SINCELEJO/, 'SINCELEJO'], [/SANTA\s+ANA/, 'SANTA ANA'],
+  [/TARAZA/, 'TARAZA'], [/LORICA/, 'LORICA'], [/NECHI/, 'NECHI'],
+];
+function ventaDeObs(obs){
+  const o = String(obs || '').toUpperCase();
+  const i = o.search(/VEN[DI]\w*[AO]\b/); if (i < 0) return {};
+  // solo la frase de la venta (hasta el siguiente " | ")
+  const frase = o.slice(i).split(' | ')[0];
+  const out = {};
+  let mejor = null;
+  for (const [re, pdv] of VTA_ALIAS) { const m = frase.match(re); if (m && (!mejor || m.index < mejor.i)) mejor = {i: m.index, pdv}; }
+  if (mejor) out.vtPdv = mejor.pdv;
+  if (/\bCONTADO\b/.test(o)) out.modalidad = 'Contado'; else if (/\bCREDITO\b|\bCRÉDITO\b/.test(o)) out.modalidad = 'Crédito';
+  const c = frase.match(/\bA(?:L)?\s+(?:LA\s+|EL\s+)?(?:SEÑOR(?:A)?\s+|SR\.?\s+)?([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ]{2,60}?)(?=\s*(?:\(|\bCC\b|\bC\.C|\bEL\s+\d|\bPOR\b|\bEN\b|-|,|\.|TRASPASO|TRASAPSO|$))/);
+  if (c && !/^(LOTE|CREDITO|CONTADO|MOTO)$|^OTRA\b/.test(c[1].trim())) out.comprador = c[1].trim();
+  return out;
+}
+function conVentaObs(r){
+  if (r.estado !== 'Vendida' || !r.obs || (r.vtPdv && r.comprador && r.modalidad && r.vtValorFinal)) return r;
+  const d = ventaDeObs(r.obs), x = {...r};
+  if (!x.vtPdv && d.vtPdv) x.vtPdv = d.vtPdv;
+  if (!x.comprador && d.comprador) x.comprador = d.comprador;
+  if (!x.modalidad && d.modalidad) x.modalidad = d.modalidad;
+  if (!x.vtValorFinal && +x.valor) x.vtValorFinal = +x.valor;
+  return x;
+}
+
 function records(withDeleted){
   const byId = new Map(S.base.map(r => [r.id, r]));
   const out = [];
-  const norm = r => migrarGastos(r.estado === 'Abonando' ? {...r, estado: 'En sala'} : r);
+  const norm = r => conVentaObs(migrarGastos(r.estado === 'Abonando' ? {...r, estado: 'En sala'} : r));
   for (const r of S.base) out.push(norm(S.over[r.id] ? {...r, ...S.over[r.id]} : r));
   for (const id in S.over) if (!byId.has(id)) out.push(norm(S.over[id]));
   if (withDeleted) return out.map(r => S.del[r.id] ? {...r, _del: S.del[r.id]} : r);
@@ -1875,7 +1913,7 @@ function vMotos(all){
   ${nAbon != null ? `<p style="margin:0 0 10px"><b>${rows.length}</b> motos en sala · de ellas, <b>${nAbon}</b> abonando <span class="chip st-abono">abonando</span></p>` : ''}
   <div class="tbl-wrap"><table><thead><tr><th class="num">N.°</th><th>Retención</th><th>Punto</th><th>Deudor</th><th>Moto</th><th>Placa</th><th>Estado</th><th>Salida</th><th>Veces retenida</th><th></th></tr></thead><tbody>
   ${slice.map(r => `<tr class="click" data-id="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.fechaRecibo)}</td><td>${esc(r.pdv)}</td><td>${esc(r.deudor)}</td><td>${esc(r.linea)}</td><td>${plate(r.placa)}</td><td>${chipR(r)}</td><td>${fd(r.fechaSalida)}</td><td>${vezChip(r) || '<span class="muted small">1</span>'}</td>
-    <td>${dobleAbierta(r)?'<span class="chip pill-red">Registrada dos veces</span> ':''}${r._del?'<span class="chip pill-red">Eliminada</span> ':''}${cobroPend(r)?'<span class="chip pill-red">Cobro pendiente</span> ':''}${isNovedad(r)?'<span class="chip pill-warn">Por revisar</span> ':''}${r.revisar&&r.revisar.length?'<span class="chip st-sd">Dato por corregir</span>':''}${r.faltan&&r.faltan.length?' <span class="chip pill-warn">Avance: faltan datos</span>':''}${r.estado==='Recuperada por el cliente'&&r.recDesde&&r.recDesde!=='En sala'?` <span class="chip st-recup">desde ${esc({'En taller':'taller','Para la venta':'venta'}[r.recDesde] || r.recDesde.toLowerCase())}</span>`:''}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Ninguna moto coincide con la búsqueda.</td></tr>'}
+    <td>${dobleAbierta(r)?'<span class="chip pill-red">Registrada dos veces</span> ':''}${r._del?'<span class="chip pill-red">Eliminada</span> ':''}${cobroPend(r)?'<span class="chip pill-red">Cobro pendiente</span> ':''}${isNovedad(r)?'<span class="chip pill-warn">Por revisar</span> ':''}${r.revisar&&r.revisar.length?'<span class="chip st-sd">Dato por corregir</span>':''}${r.faltan&&r.faltan.length?' <span class="chip pill-warn">Faltan datos</span>':''}${r.estado==='Recuperada por el cliente'&&r.recDesde&&r.recDesde!=='En sala'?` <span class="chip st-recup">desde ${esc({'En taller':'taller','Para la venta':'venta'}[r.recDesde] || r.recDesde.toLowerCase())}</span>`:''}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Ninguna moto coincide con la búsqueda.</td></tr>'}
   </tbody></table></div>
   <div class="pager"><span>${nfmt(rows.length)} motos · página ${S.f.page+1} de ${pages}</span>
     <button class="btn" id="pgPrev" ${S.f.page?'':'disabled'}>Anterior</button><button class="btn" id="pgNext" ${S.f.page<pages-1?'':'disabled'}>Siguiente</button></div>`;
@@ -3446,8 +3484,8 @@ var E = {docs: {}, cargado: false, f: {text: '', estado: '', pdv: ''}, edit: nul
 const E_PLAZO = 15;
 const E_ESTADOS = ['En sala', 'Para la venta', 'Vendido', 'Recuperado por el cliente', 'Chatarra'];
 const E_PODER = new Set(['En sala', 'Para la venta']);
-const E_TIPOS = ['Nevera','Televisor','Lavadora','Estufa','Equipo de sonido','Ventilador','Aire acondicionado','Licuadora','Horno','Celular','Computador','Colchón','Mueble','Bicicleta','Otro'];
-const E_PDVS = [...new Set([...PDVS, 'PUEBLO NUEVO', 'CASANOVA MONTELIBANO', 'CASANOVA LA APARTADA'])];
+const E_TIPOS = ['Nevera','Congelador','Televisor','Lavadora','Estufa','Horno','Parlante o equipo de sonido','Ventilador','Aire acondicionado','Celular','Computador','Colchón','Mueble','Pequeño electrodoméstico','Bicicleta','Otro'];
+const E_PDVS = [...new Set([...PDVS, 'ELECTRO PUERTO', 'CASANOVA PUERTO', 'CASANOVA AYAPEL', 'CASANOVA MAJAGUAL', 'CASANOVA MONTELIBANO', 'CASANOVA LA APARTADA', 'PUEBLO NUEVO'])];
 const E_TAG_ART = 'Artículo', E_TAG_INV = 'Inventario';
 const eNum = v => +String(v ?? '').replace(/[^\d]/g, '') || 0;
 const eMil = v => v || v === 0 ? (+v).toLocaleString('es-CO') : '';
@@ -3512,7 +3550,7 @@ function eRender(){
       <button class="btn" id="eCsv">Descargar CSV</button>
     </div>
     <div class="tbl-wrap"><table><thead><tr><th class="num">N.°</th><th>Retención</th><th>Punto</th><th>Cliente</th><th>Artículo</th><th>Estado</th><th class="num">Días</th></tr></thead><tbody>
-    ${lista.map(r => { const d = r.fechaRecibo ? daysBetween(r.fechaRecibo, r.fechaSalida || t) : ''; return `<tr class="click" data-eid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.fechaRecibo)}</td><td>${esc(r.pdv || '')}</td><td>${esc(r.deudor || '')}</td><td>${esc(eArt(r))}</td><td>${eChip(r)}</td><td class="num">${eVencido(r) ? `<span class="chip ${d - E_PLAZO >= 15 ? 'pill-red' : 'pill-warn'}">${d}</span>` : d}</td></tr>`; }).join('')
+    ${lista.map(r => { const d = r.fechaRecibo ? daysBetween(r.fechaRecibo, r.fechaSalida || t) : ''; return `<tr class="click" data-eid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.fechaRecibo)}</td><td>${esc(r.pdv || '')}</td><td>${esc(r.deudor || '')}</td><td>${esc(eArt(r))}</td><td>${eChip(r)}${r.faltan && r.faltan.length ? ' <span class="chip pill-warn">Faltan datos</span>' : ''}</td><td class="num">${eVencido(r) ? `<span class="chip ${d - E_PLAZO >= 15 ? 'pill-red' : 'pill-warn'}">${d}</span>` : d}</td></tr>`; }).join('')
       || `<tr><td colspan="7" class="empty">${all.length ? 'Ningún electrodoméstico coincide con la búsqueda.' : 'Todavía no hay electrodomésticos registrados.'}</td></tr>`}
     </tbody></table></div>`;
   const nb = $('#eNuevo'); if (nb) nb.onclick = () => eAbrir(null);
@@ -3525,7 +3563,7 @@ function eRender(){
 }
 function eCsv(lista){
   const cols = [['numero','N.°'],['fechaRecibo','Fecha de retención'],['pdv','Punto'],['deudor','Cliente'],['cedula','Cédula'],['tipo','Tipo'],['marca','Marca'],['referencia','Referencia'],['serial','Serial'],['estado','Estado'],
-    ['capital','Capital pendiente'],['mora','Valor en mora'],['interes','Intereses por mora'],['gastos','Gastos'],['retAprobado','Retoma aprobada'],['fechaRetoma','Fecha de retoma'],['scEstado','Saldo del cliente'],['vtAutorizado','Venta autorizada'],['comprador','Comprador'],['vtValorFinal','Valor de venta'],['fechaSalida','Fecha de salida']];
+    ['capital','Capital pendiente'],['mora','Valor en mora'],['interes','Intereses por mora'],['gastos','Gastos'],['retAprobado','Retoma aprobada'],['fechaRetoma','Fecha de retoma'],['scEstado','Saldo del cliente'],['vtAutorizado','Venta autorizada'],['comprador','Comprador'],['vtPdv','Punto donde se vendió'],['vtValorFinal','Valor de venta'],['fechaSalida','Fecha de salida']];
   const q_ = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const csv = '﻿' + [cols.map(c => q_(c[1])).join(';'), ...lista.map(r => cols.map(([k]) => q_(r[k])).join(';'))].join('\r\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'})); a.download = 'electrodomesticos-retenidos-' + todayISO() + '.csv'; document.body.appendChild(a); a.click(); a.remove();
@@ -3555,6 +3593,7 @@ function eAbrir(id, ir){
     <div class="sheet-body">
       <fieldset class="estado-top"><legend>Estado actual</legend><div class="fgrid">${inp('estado', 'Estado', {sel: isNew ? ['En sala'] : E_ESTADOS, req: 1})}</div>
         ${!isNew && cur.estado === 'En sala' ? `<p class="small muted" style="margin:6px 0 0">${eVencido(cur) ? `<b class="rojo">Ya pasaron los ${E_PLAZO} días</b> (${daysBetween(cur.fechaRecibo, todayISO())} días en sala). Revisa si el cliente abonó o inicia la retoma.` : `Plazo para recuperarlo: hasta el ${fd(masDias(cur.fechaRecibo, E_PLAZO))}.`}</p>` : ''}</fieldset>
+      ${cur.importado && cur.faltan && cur.faltan.length ? `<div class="revisar" style="margin:0 0 12px"><b>Viene del Excel histórico con información pendiente.</b> Se puede guardar igual; complétala cuando puedas:<ul style="margin:6px 0 0 18px">${cur.faltan.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
       <section class="etapa"><div class="etapa-head" style="cursor:default"><span class="etapa-t">En sala</span><span class="etapa-sub">Recibo, artículo, fotos, estado de cuenta y abonos</span></div><div class="etapa-body">
       <fieldset><legend>Recibo</legend><div class="fgrid">
         ${inp('fechaRecibo', 'Fecha de retención', {date: 1, req: 1})}${inp('pdv', 'Punto de venta', {sel: E_PDVS, req: 1})}
@@ -3600,7 +3639,7 @@ function eAbrir(id, ir){
       </div></section>
       <section class="etapa" id="eVentaBox"><div class="etapa-head" style="cursor:default"><span class="etapa-t">Para la venta y salida</span><span class="etapa-sub">Venta, recuperación o chatarra</span></div><div class="etapa-body">
       <fieldset data-e="venta"><legend>Para la venta</legend><div class="fgrid">${inp('vtAutorizado', 'Valor de venta autorizado', {money: 1})}</div></fieldset>
-      <fieldset data-e="vendido"><legend>Venta</legend><div class="fgrid">${inp('comprador', 'Comprador')}${inp('vtValorFinal', 'Valor final de venta', {money: 1})}${inp('modalidad', 'Modalidad', {sel: ['Contado', 'Crédito']})}${inp('vtRC', 'Recibo de caja o factura')}</div></fieldset>
+      <fieldset data-e="vendido"><legend>Venta</legend><div class="fgrid">${inp('comprador', 'Comprador')}${inp('vtPdv', 'Punto donde se vendió', {sel: E_PDVS})}${inp('vtValorFinal', 'Valor final de venta', {money: 1})}${inp('modalidad', 'Modalidad', {sel: ['Contado', 'Crédito']})}${inp('vtRC', 'Recibo de caja o factura')}</div></fieldset>
       <fieldset data-e="recuperado"><legend>Recuperado por el cliente</legend><div class="fgrid">${inp('rc', 'Recibo de caja del pago')}</div><div class="small" id="eRecMsg" style="margin-top:6px"></div></fieldset>
       <fieldset data-e="salida"><legend>Salida</legend><div class="fgrid">${inp('fechaSalida', 'Fecha de salida', {date: 1, hint: 'El día en que se vendió, lo recuperó el cliente o se mandó a chatarra.'})}</div></fieldset>
       </div></section>`}
@@ -3629,8 +3668,8 @@ function eAbrir(id, ir){
 }
 // confirmación sin ventanas del navegador: segundo clic confirma
 function confirmarE(msg){ const e = $('#eErr'); if (E._conf === msg) { E._conf = null; return true; } E._conf = msg; e.textContent = msg + ' Toca otra vez para confirmar.'; return false; }
-const E_LABEL = {estado:'Estado', fechaRecibo:'Fecha de retención', pdv:'Punto de venta', deudor:'Cliente', cedula:'Cédula', forma:'Forma', retenidaPor:'Quién lo retuvo', recibidaPor:'Quién lo recibió', tipo:'Tipo', marca:'Marca', referencia:'Referencia', serial:'Serial', estadoFisico:'Cómo se recibió', accesorios:'Accesorios', capital:'Capital pendiente', mora:'Valor en mora', interes:'Intereses por mora', gastos:'Gastos', observaciones:'Observaciones', tieneDS:'Deudores solidarios', waTit:'WhatsApp del deudor', waDS:'WhatsApp del deudor solidario', retValor:'Retoma propuesta', retEstado:'Aprobación de la retoma', retAprobado:'Retoma aprobada', fechaRetoma:'Fecha de retoma', scEstado:'Saldo del cliente', scFechaPago:'Fecha de pago del saldo', scRC:'Recibo del saldo', vtAutorizado:'Venta autorizada', comprador:'Comprador', vtValorFinal:'Valor de venta', modalidad:'Modalidad', vtRC:'Recibo de la venta', rc:'Recibo de caja', fechaSalida:'Fecha de salida', fotos:'Fotos', abonos:'Abonos'};
-const E_CAMPOS = Object.keys(E_LABEL).filter(k => k !== 'fotos' && k !== 'abonos' && k !== 'retEstado' && k !== 'retAprobado');
+const E_LABEL = {faltan:'Datos pendientes', estado:'Estado', fechaRecibo:'Fecha de retención', pdv:'Punto de venta', deudor:'Cliente', cedula:'Cédula', forma:'Forma', retenidaPor:'Quién lo retuvo', recibidaPor:'Quién lo recibió', tipo:'Tipo', marca:'Marca', referencia:'Referencia', serial:'Serial', estadoFisico:'Cómo se recibió', accesorios:'Accesorios', capital:'Capital pendiente', mora:'Valor en mora', interes:'Intereses por mora', gastos:'Gastos', observaciones:'Observaciones', tieneDS:'Deudores solidarios', waTit:'WhatsApp del deudor', waDS:'WhatsApp del deudor solidario', retValor:'Retoma propuesta', retEstado:'Aprobación de la retoma', retAprobado:'Retoma aprobada', fechaRetoma:'Fecha de retoma', scEstado:'Saldo del cliente', scFechaPago:'Fecha de pago del saldo', scRC:'Recibo del saldo', vtAutorizado:'Venta autorizada', comprador:'Comprador', vtPdv:'Punto donde se vendió', vtValorFinal:'Valor de venta', modalidad:'Modalidad', vtRC:'Recibo de la venta', rc:'Recibo de caja', fechaSalida:'Fecha de salida', fotos:'Fotos', abonos:'Abonos'};
+const E_CAMPOS = Object.keys(E_LABEL).filter(k => !['fotos','abonos','retEstado','retAprobado','faltan'].includes(k));
 const E_MONEY = new Set(['capital','mora','interes','gastos','retValor','vtAutorizado','vtValorFinal']);
 function eLeer(){
   const o = {...E.edit.cur};
@@ -3696,53 +3735,61 @@ function eDrawAbonos(){
 async function eGuardar(salir, accion){
   const err = $('#eErr'), {cur: prev, isNew, id} = E.edit;
   const v = eLeer(), tags = new Set(E.fotos.map(f => f.tag));
-  const falta = m => { err.textContent = m; return true; };
+  // lo que vino del Excel histórico se guarda igual; lo que falte queda anotado como pendiente
+  const vieja = !isNew && !!prev.importado, pend = [];
+  const falta = m => { if (vieja && !/por qué/.test(m)) { pend.push(String(m).replace(/\.$/, '')); return false; } err.textContent = m; return true; };
   if (isNew) E.abonos.forEach(a => a.saved = true);
   // datos del registro
   const req = [['fechaRecibo','la fecha de retención'],['pdv','el punto de venta'],['deudor','el cliente'],['forma','si fue entrega voluntaria o retenido'],['recibidaPor','quién lo recibió'],['tipo','el tipo de electrodoméstico'],['marca','la marca']].filter(([k]) => !v[k]).map(x => x[1]);
   if (v.forma === 'Retenida' && !v.retenidaPor) req.push('quién lo retuvo');
-  if (req.length) return falta('Falta: ' + req.join(', ') + '.');
-  if (v.fechaRecibo > todayISO()) return falta('La fecha de retención no puede ser futura.');
-  if (!tags.has(E_TAG_ART)) { const b = $('#eFotosArt'); if (b) b.scrollIntoView({block: 'center'}); return falta('Sube al menos una foto del electrodoméstico. Es obligatoria.'); }
-  if (v.serial) { const dup = eLista().find(r => r.id !== id && E_PODER.has(r.estado) && nid(r.serial) === nid(v.serial)); if (dup && E_PODER.has(v.estado)) return falta(`Ese serial ya está registrado y sigue en poder de la empresa: N.° ${dup.numero} (${dup.deudor}).`); }
+  if (req.length) { if (falta('Falta: ' + req.join(', ') + '.')) return; }
+  if (v.fechaRecibo > todayISO()) { if (falta('La fecha de retención no puede ser futura.')) return; }
+  if (!tags.has(E_TAG_ART)) { const b = $('#eFotosArt'); if (b) b.scrollIntoView({block: 'center'}); { if (falta('Sube al menos una foto del electrodoméstico. Es obligatoria.')) return; } }
+  if (v.serial) { const dup = eLista().find(r => r.id !== id && E_PODER.has(r.estado) && nid(r.serial) === nid(v.serial)); if (dup && E_PODER.has(v.estado)) { if (falta(`Ese serial ya está registrado y sigue en poder de la empresa: N.° ${dup.numero} (${dup.deudor}).`)) return; } }
   // retoma: enviar al jefe
   if (accion === 'enviarRet') {
     const fn = notifFaltan(E.fotos, NOTIF_RET, v);
     const f2 = [!v.tieneDS && 'indicar cuántos deudores solidarios tiene', !v.waTit && 'indicar si el deudor tiene WhatsApp', nDS(v.tieneDS) && !v.waDS && 'indicar si el deudor solidario tiene WhatsApp', fn.length && 'notificación de retoma: ' + fn.join(', '), !v.capital && 'el capital pendiente del crédito (estado de cuenta)', !v.retValor && 'el valor de retoma propuesto'].filter(Boolean);
-    if (f2.length) return falta('Para enviar la retoma al jefe falta: ' + f2.join('; ') + '.');
+    if (f2.length) { if (falta('Para enviar la retoma al jefe falta: ' + f2.join('; ') + '.')) return; }
     v.retEstado = 'Pendiente'; v.retAprobado = null; v.retNota = null;
   }
   if (v.retEstado === 'Aprobado' && +v.retValor !== +prev.retValor) { v.retEstado = 'Pendiente'; v.retAprobado = null; }
   const cambiaEstado = !isNew && v.estado !== prev.estado;
   if (cambiaEstado) {
-    if (!['En sala','Para la venta'].includes(prev.estado) && !S.owner) return falta('Este electrodoméstico ya salió (' + prev.estado + '). Solo Kenny puede cambiar su estado.');
-    if (v.estado !== 'Chatarra' && v.estado !== 'Recuperado por el cliente' && v.estado !== 'En sala' && !isEnc()) return falta('Solo las encargadas y el jefe pueden pasarlo a ' + v.estado + '.');
+    if (!['En sala','Para la venta'].includes(prev.estado) && !S.owner) { if (falta('Este electrodoméstico ya salió (' + prev.estado + '). Solo Kenny puede cambiar su estado.')) return; }
+    if (v.estado !== 'Chatarra' && v.estado !== 'Recuperado por el cliente' && v.estado !== 'En sala' && !isEnc()) { if (falta('Solo las encargadas y el jefe pueden pasarlo a ' + v.estado + '.')) return; }
     if (v.estado === 'Para la venta') {
-      if (prev.retEstado !== 'Aprobado') return falta('Para pasarlo a la venta, el jefe tiene que aprobar primero la retoma (sección Retoma).');
-      if (!v.fechaRetoma) return falta('Escribe la fecha de retoma.');
+      if (prev.retEstado !== 'Aprobado') { if (falta('Para pasarlo a la venta, el jefe tiene que aprobar primero la retoma (sección Retoma).')) return; }
+      if (!v.fechaRetoma) { if (falta('Escribe la fecha de retoma.')) return; }
     }
-    if (v.estado === 'Vendido') { const f3 = [!v.comprador && 'el comprador', !v.vtValorFinal && 'el valor final de venta', !v.modalidad && 'la modalidad', !v.fechaSalida && 'la fecha de salida'].filter(Boolean); if (prev.estado !== 'Para la venta') return falta('Solo se puede vender lo que está para la venta.'); if (f3.length) return falta('Para marcarlo como vendido falta: ' + f3.join(', ') + '.'); }
-    if (v.estado === 'Recuperado por el cliente') { if (eRecuperar(v) > 0) return falta(`El cliente todavía debe ${money(eRecuperar(v))}. Registra el pago como abono (sección Abonos) antes de marcarlo como recuperado.`); if (!v.rc || !v.fechaSalida) return falta('Escribe el recibo de caja y la fecha de salida.'); }
-    if (v.estado === 'Chatarra' && !v.fechaSalida) return falta('Escribe la fecha de salida.');
+    if (v.estado === 'Vendido') { const f3 = [!v.comprador && 'el comprador', !v.vtValorFinal && 'el valor final de venta', !v.modalidad && 'la modalidad', !v.fechaSalida && 'la fecha de salida'].filter(Boolean); if (prev.estado !== 'Para la venta') { if (falta('Solo se puede vender lo que está para la venta.')) return; } if (f3.length) { if (falta('Para marcarlo como vendido falta: ' + f3.join(', ') + '.')) return; } }
+    if (v.estado === 'Recuperado por el cliente') { if (eRecuperar(v) > 0) { if (falta(`El cliente todavía debe ${money(eRecuperar(v))}. Registra el pago como abono (sección Abonos) antes de marcarlo como recuperado.`)) return; } if (!v.rc || !v.fechaSalida) { if (falta('Escribe el recibo de caja y la fecha de salida.')) return; } }
+    if (v.estado === 'Chatarra' && !v.fechaSalida) { if (falta('Escribe la fecha de salida.')) return; }
   }
   // al retomarlo: saldo del cliente y su notificación
   if (v.estado === 'Para la venta' || (v.estado === 'Vendido' && v.fechaRetoma) || (v.estado === 'Chatarra' && v.fechaRetoma)) {
     if (eSaldo(v) > 0) {
-      if (!v.scEstado) return falta(`El cliente queda debiendo ${money(eSaldo(v))}. Indica qué pasa con ese saldo.`);
-      if (v.scEstado === 'Pagó el saldo: paz y salvo' && (!v.scFechaPago || !v.scRC)) return falta('Escribe la fecha y el recibo de caja con que el cliente pagó el saldo.');
-      if (ePideNotSal(v) && (cambiaEstado || prev.scEstado !== v.scEstado)) { const fn = notifFaltan(E.fotos, NOTIF_SAL, v); if (fn.length) return falta(`El cliente queda debiendo ${money(eSaldo(v))}: falta subir la notificación del saldo pendiente: ` + fn.join(', ') + '.'); }
+      if (!v.scEstado) { if (falta(`El cliente queda debiendo ${money(eSaldo(v))}. Indica qué pasa con ese saldo.`)) return; }
+      if (v.scEstado === 'Pagó el saldo: paz y salvo' && (!v.scFechaPago || !v.scRC)) { if (falta('Escribe la fecha y el recibo de caja con que el cliente pagó el saldo.')) return; }
+      if (ePideNotSal(v) && (cambiaEstado || prev.scEstado !== v.scEstado)) { const fn = notifFaltan(E.fotos, NOTIF_SAL, v); if (fn.length) { if (falta(`El cliente queda debiendo ${money(eSaldo(v))}: falta subir la notificación del saldo pendiente: ` + fn.join(', ') + '.')) return; } }
       v.scValor = eSaldo(v);
     } else { v.scEstado = null; v.scValor = 0; }
-    if (v.estado === 'Para la venta' && !v.vtAutorizado) return falta('Escribe el valor de venta autorizado.');
+    if (v.estado === 'Para la venta' && !v.vtAutorizado) { if (falta('Escribe el valor de venta autorizado.')) return; }
   }
   if (v.scEstado !== 'Pagó el saldo: paz y salvo') { v.scFechaPago = null; v.scRC = null; }
+  if (vieja) {
+    if (v.estado === 'Vendido') { if (!v.fechaSalida) pend.push('Falta la fecha de la venta (fecha de salida)'); if (!v.comprador) pend.push('Falta el comprador'); if (!v.vtValorFinal) pend.push('Falta el valor de venta'); }
+    if (v.estado === 'Recuperado por el cliente' && !v.fechaSalida) pend.push('Falta la fecha en que se le entregó al cliente');
+    v.faltan = pend.length ? [...new Set(pend)] : null;
+  }
   const nota = ($('#eNota') && $('#eNota').value.trim()) || (accion === 'enviarRet' ? 'Envió la retoma al jefe' : '');
-  if (cambiaEstado && !nota) { const n = $('#eNota'); if (n) n.focus(); return falta('Escribe por qué cambias el estado (en el recuadro de abajo).'); }
+  if (cambiaEstado && !nota) { const n = $('#eNota'); if (n) n.focus(); { if (falta('Escribe por qué cambias el estado (en el recuadro de abajo).')) return; } }
   // historial
   const now = new Date().toISOString();
   const cambios = isNew ? [] : [...E_CAMPOS, 'retEstado'].filter(k => String(prev[k] ?? '') !== String(v[k] ?? '')).map(k => ({campo: k, antes: E_MONEY.has(k) && prev[k] ? money(prev[k]) : prev[k] ?? null, despues: E_MONEY.has(k) && v[k] ? money(v[k]) : v[k] ?? null}));
   if (!isNew && (prev.fotos || []).length !== v.fotos.length) cambios.push({campo: 'fotos', antes: String((prev.fotos || []).length), despues: String(v.fotos.length)});
   if (!isNew && (prev.abonos || []).length !== E.abonos.length) cambios.push({campo: 'abonos', antes: String((prev.abonos || []).length), despues: String(E.abonos.length)});
+  if (vieja && JSON.stringify(prev.faltan || null) !== JSON.stringify(v.faltan || null)) cambios.push({campo: 'faltan', antes: String((prev.faltan || []).length), despues: String((v.faltan || []).length)});
   if (!isNew && !cambios.length) { salir(); return; }
   v.historial = [...(prev.historial || []), isNew ? {at: now, by: actorId(), nuevo: true} : {at: now, by: actorId(), cambios, nota: nota || null}];
   v.updatedAt = now; v.updatedBy = actorId(); if (isNew) { v.createdAt = now; v.createdBy = actorId(); }
