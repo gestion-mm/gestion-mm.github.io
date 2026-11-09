@@ -3604,7 +3604,7 @@ function eAbrir(id, ir){
         ${inp('tipo', 'Tipo de electrodoméstico', {sel: E_TIPOS, req: 1})}${inp('marca', 'Marca', {req: 1})}${inp('referencia', 'Referencia o modelo')}${inp('serial', 'Serial')}
         ${inp('estadoFisico', 'Cómo se recibió', {sel: ['Bueno', 'Regular', 'Malo (dañado)']})}${inp('accesorios', 'Accesorios o detalles', {wide: 1, ph: 'Control, cables, golpes, piezas faltantes…'})}</div></fieldset>
       <fieldset><legend>Fotos</legend>
-        <p class="small" style="margin:0 0 8px"><b>Obligatoria al registrarlo:</b> al menos una foto del electrodoméstico (las que quieran: frente, lados, serial, golpes…). El acta de inventario es opcional.</p>
+        <p class="small" style="margin:0 0 8px"><b>Fotos de la retención:</b> hay espacio para 5. <b>Solo la primera es obligatoria</b>; las otras 4 son opcionales (frente, lados, serial, golpes…). El acta de inventario también es opcional.</p>
         <div class="fotos" id="eFotosArt"></div><span class="small muted" id="eFotoMsg"></span></fieldset>
       <fieldset><legend>Estado de cuenta (a la fecha de retención)</legend><div class="fgrid">
         ${inp('capital', 'Capital pendiente del crédito', {money: 1, hint: 'Lo que falta por pagar del crédito, sin intereses.'})}${inp('mora', 'Valor en mora (cuotas vencidas)', {money: 1})}
@@ -3700,7 +3700,9 @@ function eDrawFotos(){
   const t = (f, i) => `<div class="foto-wrap" style="position:relative"><button type="button" class="foto" data-ei="${i}">${fotoSrc(f) ? `<img src="${esc(fotoSrc(f))}" alt="${esc(f.tag)}">` : '<span class="small muted">Cargando…</span>'}<span class="foto-tag">${esc(f.tag)}</span></button>${ro || (f.saved && !S.owner && f.by !== actorId()) ? '' : `<button type="button" class="btn danger" data-equit="${i}" aria-label="Quitar foto" style="position:absolute;top:4px;right:4px;min-height:26px;padding:0 8px">×</button>`}</div>`;
   const add = (tag, txt) => ro ? '' : `<button type="button" class="foto empty" data-etag="${esc(tag)}"><span>${txt}</span><span class="foto-tag">${esc(tag)}</span></button>`;
   const de = tag => E.fotos.map((f, i) => [f, i]).filter(([f]) => f.tag === tag);
-  box.innerHTML = de(E_TAG_ART).map(([f, i]) => t(f, i)).join('') + add(E_TAG_ART, de(E_TAG_ART).length ? '+ Otra foto' : '+ Tomar foto') + de(E_TAG_INV).map(([f, i]) => t(f, i)).join('') + (de(E_TAG_INV).length ? '' : add(E_TAG_INV, '+ Acta de inventario (opcional)'));
+  const arts = de(E_TAG_ART), vacios = Math.max(ro ? 0 : 1, 5 - arts.length);
+  const hueco = n => ro ? '' : `<button type="button" class="foto empty" data-etag="${E_TAG_ART}"><span>${n === 1 ? '+ Tomar foto' : '+ Agregar foto'}</span><span class="foto-tag">${n === 1 ? 'Foto 1 · obligatoria' : n <= 5 ? 'Foto ' + n + ' · opcional' : 'Otra foto · opcional'}</span></button>`;
+  box.innerHTML = arts.map(([f, i]) => t(f, i)).join('') + Array.from({length: vacios}, (_, k) => hueco(arts.length + k + 1)).join('') + de(E_TAG_INV).map(([f, i]) => t(f, i)).join('') + (de(E_TAG_INV).length ? '' : add(E_TAG_INV, '+ Acta de inventario (opcional)'));
   const par = (lista, el) => { if (!el) return; const ds = nDS(r.tieneDS);
     el.innerHTML = lista.filter(tag => ds || !tag.includes('deudor solidario')).map(tag => { const req = notifPide(tag, r), hit = de(tag);
       if (!req && !hit.length) return `<div class="foto-par"><div class="foto empty" style="aspect-ratio:auto;min-height:70px;cursor:default;border-style:solid"><span class="small muted" style="padding:6px;text-align:center">No tiene WhatsApp: no se pide captura</span></div><span class="par-tag">${esc(tag.replace('al titular', 'al deudor'))}</span></div>`;
