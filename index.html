@@ -4061,7 +4061,7 @@ function cAbrir(id, tipoNuevo){
       </div>`}
       <div class="fgrid">${C_CAMPOS[tipo].map(campo).join('')}</div>
       ${tipo === 'visita' ? '<p class="small" id="cTotal" style="margin:8px 0 0"></p>' : ''}
-      <p class="small muted" style="margin:12px 0 0">El PDF sale con el logo y el texto exacto de la carta de la empresa${tipo === 'visita' ? ', con la firma del Departamento de Cartera y la constancia de entrega para firmar' : tipo.startsWith('retoma') ? ', con su firma' : ''}.</p>
+      <p class="small muted" style="margin:12px 0 0">El PDF sale con el logo y el texto exacto de la carta de la empresa${tipo === 'visita' ? ', con su firma y la constancia de entrega para firmar' : ', con su firma'}.</p>
       <p class="err" id="cErr" role="alert"></p>
     </div>
     <div class="sheet-foot">${r && S.owner && !ro ? '<button class="btn danger" id="cDel" style="margin-right:auto">Eliminar</button>' : ''}${r && !ro ? '<button class="btn" id="cCopia">Hacer otra igual</button>' : ''}<button class="btn" id="cCancel">Cancelar</button>${ro ? (r ? '<button class="btn primary" id="cSoloPdf">Descargar PDF</button>' : '') : '<button class="btn primary" id="cSave">Guardar y descargar PDF</button>'}</div>
@@ -4209,7 +4209,7 @@ async function cHacerPdf(tipo, d){
   doc.setTitle(cTxt(C_TIPOS[tipo] + ' - ' + (d.nombre || ''))); doc.setAuthor(C_EMPRESA);
   const F = await doc.embedFont(StandardFonts.Helvetica), FB = await doc.embedFont(StandardFonts.HelveticaBold);
   const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-  const logo = await doc.embedJpg(b64(C_LOGO)), firma = tipo !== 'entrega' ? await doc.embedPng(b64(C_FIRMA)) : null;
+  const logo = await doc.embedJpg(b64(C_LOGO)), firma = await doc.embedPng(b64(C_FIRMA));
   const cm = 28.3465, carta = tipo === 'visita';
   const W = carta ? 21.59 * cm : 21.0 * cm, H = carta ? 27.94 * cm : 29.7 * cm;
   const M = carta ? {l: 2.0 * cm, r: 2.0 * cm, t: 0.9 * cm, b: 2.3 * cm} : {l: 2.5 * cm, r: 2.5 * cm, t: 1.2 * cm, b: tipo.startsWith('retoma') ? 2.4 * cm : 2.2 * cm};
@@ -4293,7 +4293,7 @@ async function cHacerPdf(tipo, d){
     lugar(T * 10 + 2.2 * cm);
     { const fw = 2.3 * cm, fh = fw * firma.height / firma.width; espacio(fh * 0.88); page.drawImage(firma, {x: M.l + 1.7 * cm, y: y - fh * 0.12, width: fw, height: fh}); }
     linea(M.l, M.l + 6.5 * cm, y, false); espacio(2);
-    parrafo([['Kenny Hoyos', true]], {after: 0}); parrafo([['Coordinadora De Cartera', true]], {after: 0}); parrafo([['Inversiones Motos Y Motocarros S.A.S', true]], {after: 0});
+    parrafo([['Kenny Hoyos', true]], {after: 0}); parrafo([['Líder de Cartera', true]], {after: 0}); parrafo([['Inversiones Motos Y Motocarros S.A.S', true]], {after: 0});
     parrafo([['Celular: ', true], [C_CEL, false]], {after: 0}); parrafo([['Correo electrónico: ', true], [C_CORREO, false]], {after: 0});
   } else if (tipo === 'retoma2') {
     parrafo([['Ciudad ', true], [d.ciudad || '', false], [', Fecha ', true], [fechaNum(d.fecha), false]], {align: 'right', after: T * 1.6});
@@ -4310,8 +4310,8 @@ async function cHacerPdf(tipo, d){
     lugar(T * 5.6 + 1.8 * cm);
     { const fw = 2.0 * cm, fh = fw * firma.height / firma.width; espacio(fh * 0.88); page.drawImage(firma, {x: M.l + 1.9 * cm, y: y - fh * 0.12, width: fw, height: fh}); }
     linea(M.l, M.l + 6.5 * cm, y, false); espacio(2);
-    parrafo([['INVERSIONES MOTOS Y MOTOCARROS SAS.', true]], {after: 0}); parrafo([['900499748-7', false]], {after: 0});
-    parrafo([['Celular: ', true], [C_CEL, false]], {after: 0}); parrafo([['Correo electrónico: ', true], [C_CORREO, false]], {after: 0});
+    parrafo([['Kenny Hoyos', true]], {after: 0}); parrafo([['Líder de Cartera', true]], {after: 0}); parrafo([['INVERSIONES MOTOS Y MOTOCARROS SAS. · NIT 900499748-7', false]], {after: 0});
+    parrafo([['Celular: ', true], [C_CEL, false], ['   Correo electrónico: ', true], [C_CORREO, false]], {after: 0});
   } else if (tipo === 'entrega') {
     parrafo([['Ciudad ', true], [d.ciudad || '', false], [', Fecha ', true], [cFechaLarga(d.fecha), false]], {align: 'right', after: T * 1.6});
     parrafo([['Señor(a)', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); parrafo([['Ciudad ' + (d.ciudadCliente || ''), false]], {after: T * 2});
@@ -4322,9 +4322,10 @@ async function cHacerPdf(tipo, d){
     parrafo([['Es importante precisar que, si el valor del vehículo no cubre la totalidad de la obligación, el saldo pendiente de pago del capital continuará generando intereses, hasta que realice el pago total. Por lo anterior, ', false], ['INVERSIONES MOTOS Y MOTOCARROS SAS.,', true], [' queda facultado para reclamar judicialmente las sumas de dinero que queden pendientes por cancelar.', false]], {align: 'justify'});
     parrafo([['La empresa lo invita a comunicarse de manera inmediata con el área de cartera, con el fin de coordinar la entrega del vehículo y conversar sobre opciones de pago que permitan atender la obligación pendiente de forma adecuada. Recuerde que, la acción de entregar voluntariamente el vehículo es la forma más rápida, económica y favorable para usted de atender esta situación. De no recibir su comparecencia en el plazo señalado, nos veremos obligados a adelantar las gestiones previstas en el contrato y en la ley, lo que conlleva mayores costos y la continuidad del proceso de cobro hasta recuperar la totalidad de la obligación.', false]], {align: 'justify', after: T * 2});
     lugar(T * 12);
-    parrafo([['Atentamente,', false]], {after: T * 4.5});
+    parrafo([['Atentamente,', false]], {after: T * 0.5});
+    { const fw = 2.3 * cm, fh = fw * firma.height / firma.width; lugar(fh + T * 6); espacio(fh * 0.88); page.drawImage(firma, {x: M.l + 2.2 * cm, y: y - fh * 0.12, width: fw, height: fh}); }
     linea(M.l, M.l + 7.5 * cm, y, false); espacio(2);
-    parrafo([[C_EMPRESA, true]], {after: 0}); parrafo([[C_NIT, false]], {after: 0}); parrafo([['Celular: ' + C_CEL, false]], {after: 0}); parrafo([['Correo electrónico: ' + C_CORREO, false]], {after: 0});
+    parrafo([['Kenny Hoyos', true]], {after: 0}); parrafo([['Líder de Cartera', true]], {after: 0}); parrafo([[C_EMPRESA + ' · NIT ' + C_NIT, false]], {after: 0}); parrafo([['Celular: ' + C_CEL, false]], {after: 0}); parrafo([['Correo electrónico: ' + C_CORREO, false]], {after: 0});
   } else {
     const [yy, mm, dd] = (d.fecha || '').split('-');
     parrafo([[`${d.ciudad || ''}, ${+dd || ''} de ${C_MESES[+mm - 1] || ''} de ${yy || ''}`, false], ['     Hora: ', false], [d.hora || '________', false]], {after: T * 0.8});
@@ -4353,7 +4354,7 @@ async function cHacerPdf(tipo, d){
     const fw = 1.6 * cm, fh = fw * firma.height / firma.width;
     page.drawImage(firma, {x: M.l + 0.2 * cm, y: y - fh, width: fw, height: fh}); y -= fh + 2;
     linea(M.l, M.l + 6 * cm, y, false); espacio(2);
-    parrafo([['Departamento de Cartera · Contacto: ' + (d.tel || ''), true]], {after: T * 0.6});
+    parrafo([['Kenny Hoyos · Líder de Cartera · Contacto: ' + (d.tel || ''), true]], {after: T * 0.6});
     linea(M.l, W - M.r, y, true); espacio(4);
     parrafo([['CONSTANCIA DE ENTREGA DE ESTA COMUNICACIÓN', true]], {size: 8, after: T * 0.5});
     parrafo([['Recibido por: ______________________________   C.C. ____________________   Firma: ____________________', false]], {size: 8.5, after: T * 0.6});
