@@ -982,7 +982,7 @@ table.rep input,table.rep select{min-height:32px;padding:4px 6px}
 .car-btn b{font-size:16px;color:var(--accent)}.car-btn span{font-size:13px;color:var(--muted)}.car-btn:hover{background:var(--surface-2)}
 .car-moto{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 14px;background:var(--surface-2);display:grid;gap:8px}
 .car-res{display:flex;flex-wrap:wrap;gap:6px}.car-o{text-align:center;color:var(--muted);font-size:12px}
-.car-rep{color:#c62828}.car-traer-moto{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--line,#cbd5e1);border-radius:10px;background:var(--soft,#f6f8fc)}.car-traer-moto #cTmMsg{flex-basis:100%}.car-menu{position:relative;display:inline-block;margin:12px 0 4px}.car-menu>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center}.car-menu>summary::-webkit-details-marker{display:none}.car-menu-list{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:min(420px,92vw);max-height:70vh;overflow:auto;background:var(--card,#fff);border:1px solid var(--line,#d6dbe6);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px}.car-menu-g{margin:8px 10px 4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#64748b)}.car-menu-list button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:9px 10px;cursor:pointer;font:inherit;color:inherit}.car-menu-list button:hover,.car-menu-list button:focus-visible{background:var(--soft,#eef2fb);outline:none}.car-menu-list button b{display:block;color:var(--blue,#1d3a8a)}.car-menu-list button span{display:block;font-size:13px;color:var(--muted,#64748b)}.car-sub{margin:14px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}.car-nuevas-e{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
+.car-rep{color:#c62828}.car-traer-moto{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--line,#cbd5e1);border-radius:10px;background:var(--soft,#f6f8fc)}.car-traer-moto #cTmMsg{flex-basis:100%}.car-hist{border:1px solid var(--line,#d6dbe6);border-radius:12px;padding:12px 14px;margin:0 0 14px;background:var(--soft,#f6f8fc)}.car-hl{margin:0;padding-left:18px}.car-hl li{margin:3px 0}.car-yo td{background:#fff7d6}.car-menu{position:relative;display:inline-block;margin:12px 0 4px}.car-menu>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center}.car-menu>summary::-webkit-details-marker{display:none}.car-menu-list{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:min(420px,92vw);max-height:70vh;overflow:auto;background:var(--card,#fff);border:1px solid var(--line,#d6dbe6);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px}.car-menu-g{margin:8px 10px 4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#64748b)}.car-menu-list button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:9px 10px;cursor:pointer;font:inherit;color:inherit}.car-menu-list button:hover,.car-menu-list button:focus-visible{background:var(--soft,#eef2fb);outline:none}.car-menu-list button b{display:block;color:var(--blue,#1d3a8a)}.car-menu-list button span{display:block;font-size:13px;color:var(--muted,#64748b)}.car-sub{margin:14px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}.car-nuevas-e{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
 .lv-traer{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
 .car-g{margin:14px 0 6px;font-size:14px;color:var(--accent)}
 .ele-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-top:18px}
@@ -4070,7 +4070,7 @@ function cRender(){
   const G = cClientes(), cerr = r => { const x = G[cKey(r.d)]; return !!(x && x.est.cerrado); };
   const lista = Object.values(C.docs).filter(r => !r.eliminada).filter(r => (C.f.vista === 'todas' || (C.f.vista === 'arch' ? cerr(r) : !cerr(r)))).filter(r => (!C.f.tipo || r.tipo === C.f.tipo) && (!C.f.pdv || nid(cPdvDe(r)) === nid(C.f.pdv)) && (!C.f.text || nid([r.d && r.d.nombre, r.d && r.d.placa, r.d && r.d.cc, r.numero].join(' ')).includes(nid(C.f.text))))
     .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
-  names([...lista.map(r => r.por), ...Object.values(C.lec).map(l => l.por)]).then(() => main.querySelectorAll('[data-name]').forEach(el => el.textContent = who(el.dataset.name).name));
+  names([...lista.map(r => r.por), ...lista.flatMap(r => cHist(r).map(h => h.por)), ...Object.values(C.lec).map(l => l.por)].filter(Boolean)).then(() => main.querySelectorAll('[data-name]').forEach(el => el.textContent = who(el.dataset.name).name));
   main.innerHTML = `<div class="ele-head"><div><h2 style="margin:0">Cartas a clientes</h2><p class="sub" style="margin:4px 0 0">Se llenan aquí, quedan guardadas y se descargan en PDF para enviarlas por correo.</p></div></div>
     ${cPuede() ? `<details class="car-menu" id="cMenu"><summary class="btn primary">+ Nueva carta ▾</summary>
       <div class="car-menu-list" role="menu">
@@ -4088,7 +4088,7 @@ function cRender(){
       <select id="cTipo" aria-label="Tipo de carta"><option value="">Todas las cartas</option>${Object.entries(C_TIPOS).map(([k, l]) => `<option value="${k}" ${C.f.tipo === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     </div>
     <div class="tbl-wrap"><table><thead><tr><th class="num">N.°</th><th>Fecha</th><th>Carta</th><th>Cliente</th><th>Placa</th><th>Hecha por</th><th></th></tr></thead><tbody>
-    ${!C.cargado ? '<tr><td colspan="7" class="empty">Cargando cartas…</td></tr>' : lista.map(r => `<tr class="click" data-cid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.d && r.d.fecha)}</td><td>${esc(C_TIPOS[r.tipo] || r.tipo)}</td><td>${esc(r.d && r.d.nombre || '')}${(() => { const x = G[cKey(r.d)]; return x && x.est.cerrado ? `<div class="small muted">Archivado: ${esc(x.est.motivo || '')}${!x.est.auto && cPuede() ? ` <button class="btn" style="min-height:26px;padding:0 8px" data-creab="${esc(x.key)}">Reabrir</button>` : ''}</div>` : ''; })()}</td><td>${r.d && r.d.placa ? plate(r.d.placa) : ''}</td><td><span data-name="${esc(r.por)}">${esc(who(r.por).name)}</span></td><td><button class="btn" data-cpdf="${esc(r.id)}">PDF</button></td></tr>`).join('')
+    ${!C.cargado ? '<tr><td colspan="7" class="empty">Cargando cartas…</td></tr>' : lista.map(r => `<tr class="click" data-cid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.d && r.d.fecha)}</td><td>${esc(C_TIPOS[r.tipo] || r.tipo)}</td><td>${esc(r.d && r.d.nombre || '')}${(() => { const x = G[cKey(r.d)]; return x && x.est.cerrado ? `<div class="small muted">Archivado: ${esc(x.est.motivo || '')}${!x.est.auto && cPuede() ? ` <button class="btn" style="min-height:26px;padding:0 8px" data-creab="${esc(x.key)}">Reabrir</button>` : ''}</div>` : ''; })()}</td><td>${r.d && r.d.placa ? plate(r.d.placa) : ''}</td><td><span data-name="${esc(r.por)}">${esc(who(r.por).name)}</span>${(() => { const m = cHist(r).filter(h => h.accion === 'Modificó').pop(); return m && m.por && m.por !== r.por ? `<div class="small muted">Modificada por <span data-name="${esc(m.por)}">${esc(who(m.por).name)}</span></div>` : ''; })()}</td><td><button class="btn" data-cpdf="${esc(r.id)}">PDF</button></td></tr>`).join('')
       || `<tr><td colspan="7" class="empty">${Object.keys(C.docs).length ? 'Ninguna carta coincide con la búsqueda.' : 'Todavía no hay cartas guardadas.'}</td></tr>`}
     </tbody></table></div>`;
   main.querySelectorAll('[data-cnueva]').forEach(b => b.onclick = () => { const m = $('#cMenu'); if (m) m.open = false; cAbrir(null, b.dataset.cnueva); });
@@ -4167,6 +4167,7 @@ function cAbrir(id, tipoNuevo){
   root.innerHTML = `<div class="overlay" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cTitle">
     <div class="sheet-head"><h2 id="cTitle">${r ? `Carta N.° ${esc(r.numero)} · ` : ''}${esc(C_TIPOS[tipo])}</h2><button class="btn" id="cClose">Cerrar</button></div>
     <div class="sheet-body">
+      <div id="cHist" hidden></div>
       ${ro ? '' : `<div class="car-moto">
         <label for="cMoto"><b>1. ¿El cliente ya tiene carta guardada?</b> Búscalo y se llenan todos los datos; solo revisa la fecha.</label>
         <input id="cMoto" placeholder="Escribe la placa, la cédula o el nombre del deudor" style="width:100%">
@@ -4181,7 +4182,7 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
       <p class="small muted" style="margin:12px 0 0">El PDF sale con el logo y el texto exacto de la carta de la empresa${tipo === 'visita' ? ', con su firma y la constancia de entrega para firmar' : ', con su firma'}.</p>
       <p class="err" id="cErr" role="alert"></p>
     </div>
-    <div class="sheet-foot">${r && S.owner && !ro ? '<button class="btn danger" id="cDel" style="margin-right:auto">Eliminar</button>' : ''}${r && !ro ? '<button class="btn" id="cCopia">Hacer otra igual</button>' : ''}<button class="btn" id="cCancel">Cancelar</button>${ro ? (r ? '<button class="btn primary" id="cSoloPdf">Descargar PDF</button>' : '') : '<button class="btn primary" id="cSave">Guardar y descargar PDF</button>'}</div>
+    <div class="sheet-foot">${r && S.owner && !ro ? '<button class="btn danger" id="cDel" style="margin-right:auto">Eliminar</button>' : ''}${r ? '<button class="btn" id="cHistBtn">Historial</button>' : ''}${r && !ro ? '<button class="btn" id="cCopia">Hacer otra igual</button>' : ''}<button class="btn" id="cCancel">Cancelar</button>${ro ? (r ? '<button class="btn primary" id="cSoloPdf">Descargar PDF</button>' : '') : '<button class="btn primary" id="cSave">Guardar y descargar PDF</button>'}</div>
   </div></div>`;
   const salir = () => { root.innerHTML = ''; document.removeEventListener('keydown', escC); cRender(); };
   const escC = e => { if (e.key === 'Escape') salir(); };
@@ -4191,6 +4192,14 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
   cTotal();
   if ($('#cSave')) $('#cSave').onclick = () => cGuardar(salir);
   if ($('#cSoloPdf')) $('#cSoloPdf').onclick = () => cDescargar(r);
+  if ($('#cHistBtn')) $('#cHistBtn').onclick = () => {
+    const h = $('#cHist'), b = $('#cHistBtn');
+    if (!h.hidden) { h.hidden = true; b.textContent = 'Historial'; return; }
+    h.innerHTML = cHistorialHTML(C.docs[r.id] || r); h.hidden = false; b.textContent = 'Ocultar historial';
+    const ids = [...h.querySelectorAll('[data-name]')].map(e => e.dataset.name);
+    names(ids).then(() => h.querySelectorAll('[data-name]').forEach(e => e.textContent = who(e.dataset.name).name));
+    h.scrollIntoView({block: 'start', behavior: 'smooth'});
+  };
   if ($('#cCopia')) $('#cCopia').onclick = () => { const dd = cLeer(); dd.fecha = todayISO(); C.edit = null; salir(); setTimeout(() => { cAbrir(null, tipo); for (const [k, v] of Object.entries(dd)) { const el = $('#c_' + k); if (el && v != null) el.value = el.classList.contains('money-in') && v ? (+v).toLocaleString('es-CO') : v; } cTotal(); }, 0); };
   if ($('#cDel')) $('#cDel').onclick = async () => { const b = $('#cDel'); if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = '¿Seguro? Toca otra vez'; return; }
     await S.db.doc('cartas/' + r.id).set({...C.docs[r.id], id: undefined, eliminada: {at: new Date().toISOString(), por: actorId()}}); toast('Carta eliminada'); salir(); };
@@ -4306,13 +4315,45 @@ async function cGuardar(salir){
   cLs('ciudad', d.ciudad || ''); if (tipo === 'visita') { cLs('tel', d.tel || ''); cLs('almacen', d.almacen || ''); }
   const now = new Date().toISOString();
   const numero = r ? r.numero : Math.max(0, ...Object.values(C.docs).map(x => +x.numero || 0)) + 1;
-  const doc = {tipo, numero, d, at: r ? r.at : now, por: r ? r.por : actorId(), editadaEn: r ? now : null, editadaPor: r ? actorId() : null};
+  // historial: quién la creó y cada modificación (qué datos cambió)
+  const lbl = Object.fromEntries(C_CAMPOS[tipo].filter(x => x[0] !== 'g').map(x => [x[0], x[1]]));
+  const cambios = r ? Object.keys(lbl).filter(k => String((r.d || {})[k] ?? '') !== String(d[k] ?? '')).map(k => lbl[k]) : [];
+  if (r && !cambios.length) { try { await cDescargar({...r, id}); toast('No hubo cambios; se descargó el PDF.'); salir(); } catch (e) { err.textContent = 'No se pudo hacer el PDF. Revisa la conexión.'; } return; }
+  const hist = [...cHist(r), r ? {at: now, por: actorId(), accion: 'Modificó', campos: cambios} : {at: now, por: actorId(), accion: 'Creó'}];
+  const doc = {tipo, numero, d, at: r ? r.at : now, por: r ? r.por : actorId(), editadaEn: r ? now : null, editadaPor: r ? actorId() : null, hist};
   const b = $('#cSave'); b.disabled = true; b.textContent = 'Guardando…';
   try { await S.db.doc('cartas/' + id).set(doc); C.docs[id] = {...doc, id}; }
   catch (e) { b.disabled = false; b.textContent = 'Guardar y descargar PDF'; err.textContent = 'No se pudo guardar la carta. Revisa la conexión e intenta otra vez.'; return; }
   b.textContent = 'Haciendo el PDF…';
   try { await cDescargar({...doc, id}); toast(`Carta N.° ${numero} guardada y descargada`); salir(); }
   catch (e) { b.disabled = false; b.textContent = 'Guardar y descargar PDF'; err.textContent = 'La carta quedó guardada, pero no se pudo hacer el PDF (revisa la conexión). Puedes descargarlo después desde la lista.'; }
+}
+
+/* ---------- historial: quién hizo y modificó cada carta, y todas las cartas de un cliente ---------- */
+function cHist(r){
+  if (!r) return [];
+  if (Array.isArray(r.hist) && r.hist.length) return r.hist;
+  const h = [{at: r.at, por: r.por, accion: 'Creó'}];
+  if (r.editadaEn) h.push({at: r.editadaEn, por: r.editadaPor, accion: 'Modificó', campos: []});
+  return h;
+}
+const cFH = iso => { if (!iso) return ''; const t = new Date(iso); return isNaN(t) ? '' : t.toLocaleString('es-CO', {day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit'}); };
+function cHistorialHTML(r){
+  const k = cKey(r.d);
+  const todas = Object.values(C.docs).filter(x => x.d && cKey(x.d) === k).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const personas = new Set(); for (const x of todas) for (const h of cHist(x)) if (h.por) personas.add(h.por);
+  const porTipo = {}; for (const x of todas) if (!x.eliminada) porTipo[x.tipo] = (porTipo[x.tipo] || 0) + 1;
+  const nom = id => `<span data-name="${esc(id || '')}">${esc(who(id).name)}</span>`;
+  const est = (G => G[k] && G[k].est)(cClientes());
+  return `<div class="car-hist">
+    <h3 style="margin:0 0 6px">Historial de esta carta (N.° ${esc(r.numero)})</h3>
+    <ul class="car-hl">${cHist(r).map(h => `<li><b>${esc(h.accion)}</b> ${nom(h.por)} <span class="muted">· ${esc(cFH(h.at))}</span>${h.campos && h.campos.length ? `<div class="small muted">Cambió: ${esc(h.campos.join(', '))}</div>` : ''}</li>`).join('')}</ul>
+    <h3 style="margin:14px 0 6px">Todas las cartas de este cliente${r.d.placa ? ` (placa ${esc(r.d.placa)})` : ''}</h3>
+    <p class="small" style="margin:0 0 6px"><b>${todas.filter(x => !x.eliminada).length}</b> carta${todas.filter(x => !x.eliminada).length === 1 ? '' : 's'}: ${Object.entries(porTipo).map(([t, n]) => `${esc(C_TIPOS[t] || t)} <b>${n}</b> ${n === 1 ? 'vez' : 'veces'}`).join(' · ')}.
+      Han trabajado este cliente <b>${personas.size}</b> persona${personas.size === 1 ? '' : 's'}: ${[...personas].map(nom).join(', ')}.${est && est.cerrado ? ` <b>Archivado:</b> ${esc(est.motivo || '')}.` : ''}</p>
+    <div class="tbl-wrap car-scroll"><table><thead><tr><th class="num">N.°</th><th>Fecha</th><th>Carta</th><th>Punto</th><th>Hecha por</th><th>Modificada por</th></tr></thead><tbody>
+      ${todas.map(x => { const h = cHist(x), mods = h.filter(y => y.accion === 'Modificó'); return `<tr${x.id === r.id ? ' class="car-yo"' : ''}><td class="num">${esc(x.numero)}</td><td>${fd(x.d.fecha)}</td><td>${esc(C_TIPOS[x.tipo] || x.tipo)}${x.eliminada ? ' <span class="chip">eliminada</span>' : ''}</td><td>${esc(cPdvDe(x))}</td><td>${nom(x.por)}</td><td>${mods.length ? [...new Set(mods.map(y => y.por))].map(nom).join(', ') : '<span class="muted">—</span>'}</td></tr>`; }).join('')}
+    </tbody></table></div></div>`;
 }
 
 /* ---------- PDF ---------- */
