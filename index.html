@@ -982,7 +982,7 @@ table.rep input,table.rep select{min-height:32px;padding:4px 6px}
 .car-btn b{font-size:16px;color:var(--accent)}.car-btn span{font-size:13px;color:var(--muted)}.car-btn:hover{background:var(--surface-2)}
 .car-moto{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 14px;background:var(--surface-2);display:grid;gap:8px}
 .car-res{display:flex;flex-wrap:wrap;gap:6px}.car-o{text-align:center;color:var(--muted);font-size:12px}
-.car-rep{color:#c62828}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
+.car-rep{color:#c62828}.car-traer-moto{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--line,#cbd5e1);border-radius:10px;background:var(--soft,#f6f8fc)}.car-traer-moto #cTmMsg{flex-basis:100%}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
 .lv-traer{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
 .car-g{margin:14px 0 6px;font-size:14px;color:var(--accent)}
 .ele-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-top:18px}
@@ -2284,7 +2284,7 @@ function openMoto(id){
     <div class="sheet-head"><h2 id="mTitle">${isNew ? 'Nueva moto' : `N.° ${esc(cur.numero)} · ${esc(cur.deudor||'')}`}</h2>${isNew ? '' : `<span id="mEstChip">${chipR(cur)}</span>`}${cur.placa?plate(cur.placa):''}${(cur.fotos||[]).length ? `<button class="btn" id="mFotos">Ver fotos (${cur.fotos.length})</button>` : ''}<button class="btn" id="mClose" aria-label="Cerrar">Cerrar</button></div>
     <div class="sheet-body">
       <fieldset data-fs="Estado" class="estado-top"><legend>Estado actual</legend><div class="fgrid">${FIELDS.filter(f=>f.s==='Estado').map(input).join('')}</div></fieldset>
-      ${!isNew ? vecesPanel(cur) + deudaPrevia(cur) : '<div id="dupWarn"></div><div id="deuWarn"></div>'}
+      ${!isNew ? vecesPanel(cur) + deudaPrevia(cur) : '<div id="carTraer"></div><div id="dupWarn"></div><div id="deuWarn"></div>'}
       ${deleted ? `<div class="revisar"><b>Esta moto fue eliminada</b> el ${esc(fdt(r._del.at))}. No aparece en ninguna lista ni en los totales.${S.owner && !S.dbDown ? ' <button class="btn" id="mRestore" style="margin-left:8px">Restaurar moto</button>' : ''}</div>` : ''}
       ${entregada ? `<div class="banner">Esta moto ya pasó a manos de las encargadas (${esc(cur.estado)}). Puedes consultarla, pero ya no puedes cambiarla.</div>` : ''}
       <div id="recWarn"></div>
@@ -2422,7 +2422,7 @@ function openMoto(id){
       fill(); ma.addEventListener('change', fill);
       li.addEventListener('change', () => { const c = lineaCanon(ma.value, li.value); if (c) li.value = c; }); } }
   if (isNew) { $('#f_deudor').addEventListener('input', () => { $('#deuWarn').innerHTML = deudaPrevia(readForm()); });
-    $('#f_deudor').focus(); ['f_placa','f_chasis'].forEach(id => $('#'+id).addEventListener('input', dupCheck)); }
+    $('#f_deudor').focus(); ['f_placa','f_chasis'].forEach(id => $('#'+id).addEventListener('input', dupCheck)); try { cTraerMotoUI(); } catch (e) {} }
   document.querySelectorAll('.sheet tr[data-goto]').forEach(tr => tr.onclick = () => { const id = tr.dataset.goto; root.innerHTML = ''; document.removeEventListener('keydown', esc_); openMoto(id); });
   // the sheet is grouped by stage: everything done while the moto was "en sala" is one block, then peritaje, avalúo...
   // only the current stage is open; earlier stages are one line that opens with a tap
@@ -4458,6 +4458,42 @@ async function cHacerPdf(tipo, d){
   return await doc.save();
 }
 window.CAR = {render: cRender, iniciar: cIniciar};
+
+/* ---------- Motos retenidas: al registrar una moto nueva, traer los datos de la carta de retención ---------- */
+function cDatosPlaca(P){
+  const cs = Object.values(C.docs).filter(x => !x.eliminada && x.d && nid(x.d.placa) === P).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const ls = Object.values(C.lec).filter(x => x.datos && nid(x.datos.placa) === P).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  if (!cs.length && !ls.length) return null;
+  const d = {};
+  for (const l of ls) for (const [k, v] of Object.entries(l.datos)) if (v) d[k] = v;
+  for (const c of cs) for (const [k, v] of Object.entries(c.d)) if (v != null && v !== '') d[k] = v;
+  return {d, n: cs.length, ult: cs[cs.length - 1]};
+}
+function cTraerMotoUI(){
+  const box = $('#carTraer'); if (!box) return;
+  cIniciar();
+  box.innerHTML = `<div class="car-traer-moto"><div><b>¿Ya se le hizo carta de retención?</b> <span class="small muted">Escriba la placa y se llenan solos los datos del cliente y de la moto.</span></div>
+    <div class="car-acc"><input id="cTmPlaca" placeholder="Placa" maxlength="8" style="width:120px;text-transform:uppercase" aria-label="Placa"><button type="button" class="btn" id="cTmBtn">Traer datos de la carta</button></div><div class="small" id="cTmMsg" role="status"></div></div>`;
+  const go = () => {
+    const P = nid($('#cTmPlaca').value), msg = $('#cTmMsg');
+    if (P.length < 5) { msg.textContent = 'Escriba la placa completa.'; return; }
+    if (!C.cargado) { msg.textContent = 'Cargando las cartas… intente en unos segundos.'; return; }
+    const r = cDatosPlaca(P);
+    if (!r) { msg.textContent = 'Esa placa no tiene cartas guardadas. Llene los datos a mano.'; return; }
+    const d = r.d, hechos = [];
+    const pon = (id, v) => { const el = $('#f_' + id); if (!el || v == null || v === '' || String(el.value).trim()) return;
+      if (el.tagName === 'SELECT') { const op = [...el.options].find(o => nid(o.value) === nid(v)); if (!op) return; el.value = op.value; } else el.value = String(v).toUpperCase();
+      el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); hechos.push(id); };
+    pon('deudor', d.nombre); pon('pdv', d.ciudad);
+    const mk = /AKT/i.test(d.marca || '') ? 'AKT' : /TVS/i.test(d.marca || '') ? 'TVS' : d.marca ? 'OTRA MARCA' : ''; pon('marca', mk);
+    let li = d.linea || ''; try { if (typeof lineaCanon === 'function') li = lineaCanon(mk, li) || li; } catch (e) {}
+    pon('linea', li); pon('color', d.color); pon('modelo', String(d.modelo || '').replace(/\D/g, '').slice(0, 4)); pon('placa', d.placa || P); pon('chasis', d.chasis);
+    if (d.dsNombre) pon('tieneDS', '1');
+    try { dupCheck(); } catch (e) {}
+    msg.innerHTML = hechos.length ? `Listo: se llenaron ${hechos.length} datos ${r.ult ? `de la carta N.° ${esc(r.ult.numero)} (${esc(C_TIPOS[r.ult.tipo] || '')}, ${fd(r.ult.d.fecha)})` : 'de la lectura de la tarjeta'}. <b>Revíselos</b> y complete lo demás (fecha, quién la recibió…).` : 'Los datos ya estaban llenos; no se cambió nada.';
+  };
+  $('#cTmBtn').onclick = go; $('#cTmPlaca').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+}
 
 async function respaldo(tipo){
   if (!S.downloads) return;
