@@ -982,7 +982,7 @@ table.rep input,table.rep select{min-height:32px;padding:4px 6px}
 .car-btn b{font-size:16px;color:var(--accent)}.car-btn span{font-size:13px;color:var(--muted)}.car-btn:hover{background:var(--surface-2)}
 .car-moto{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 14px;background:var(--surface-2);display:grid;gap:8px}
 .car-res{display:flex;flex-wrap:wrap;gap:6px}.car-o{text-align:center;color:var(--muted);font-size:12px}
-.car-rep{color:#c62828}.car-traer-moto{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--line,#cbd5e1);border-radius:10px;background:var(--soft,#f6f8fc)}.car-traer-moto #cTmMsg{flex-basis:100%}.car-sub{margin:14px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}.car-nuevas-e{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
+.car-rep{color:#c62828}.car-traer-moto{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--line,#cbd5e1);border-radius:10px;background:var(--soft,#f6f8fc)}.car-traer-moto #cTmMsg{flex-basis:100%}.car-menu{position:relative;display:inline-block;margin:12px 0 4px}.car-menu>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center}.car-menu>summary::-webkit-details-marker{display:none}.car-menu-list{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:min(420px,92vw);max-height:70vh;overflow:auto;background:var(--card,#fff);border:1px solid var(--line,#d6dbe6);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px}.car-menu-g{margin:8px 10px 4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#64748b)}.car-menu-list button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:9px 10px;cursor:pointer;font:inherit;color:inherit}.car-menu-list button:hover,.car-menu-list button:focus-visible{background:var(--soft,#eef2fb);outline:none}.car-menu-list button b{display:block;color:var(--blue,#1d3a8a)}.car-menu-list button span{display:block;font-size:13px;color:var(--muted,#64748b)}.car-sub{margin:14px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}.car-nuevas-e{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
 .lv-traer{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
 .car-g{margin:14px 0 6px;font-size:14px;color:var(--accent)}
 .ele-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-top:18px}
@@ -3913,6 +3913,14 @@ const C_EMPRESA = 'INVERSIONES MOTOS Y MOTOCARROS SAS', C_NIT = '900499748-7', C
 const C_PIE = ['INVERSIONES MOTOS Y MOTOCARROS S.A.S. · NIT 900.499.748-7', 'Cll. 21 # 6-63, B/ Loma Fresca, Caucasia – Antioquia'];
 const C_TIPOS = {entrega: 'Entrega voluntaria del vehículo', visita: 'Constancia de visita', retoma1: 'Notificación de retoma', retoma2: 'Retoma con saldo pendiente', eentrega: 'Entrega voluntaria (electrodoméstico)', eretoma: 'Retoma de electrodoméstico'};
 const C_ELE = new Set(['eentrega', 'eretoma']);
+const C_TDESC = {
+  entrega: ['Entrega voluntaria', 'Se le pide al cliente entregar la moto en 5 días hábiles.'],
+  visita: ['Constancia de visita', 'Requerimiento de pago y entrega, con el saldo en mora.'],
+  retoma1: ['Notificación de retoma', 'Se hace efectiva la dación en pago; 3 días para pagar o abonar.'],
+  retoma2: ['Retoma con saldo pendiente', 'La moto no cubrió la deuda: se informa el saldo que queda.'],
+  eentrega: ['Entrega voluntaria de electrodoméstico', 'Se le pide entregar el artículo en 5 días hábiles.'],
+  eretoma: ['Retoma de electrodoméstico', 'Se hace efectiva la dación en pago del artículo.'],
+};
 const C_COMUNES = ['nombre', 'cc', 'direccion', 'ciudadCliente', 'dsNombre', 'dsCc', 'tel', 'almacen'];
 const C_PIE_RETOMA = 'Inversiones Motos y Motocarros SAS NIT 9004997487 Dirección Calle 21 Nº 6-69 Barrio Loma Fresca- Caucasia-Antioquia teléfono: 3208086239 Correo electrónico: carteramym17@gmail.com';
 const C_MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -4064,15 +4072,13 @@ function cRender(){
     .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
   names([...lista.map(r => r.por), ...Object.values(C.lec).map(l => l.por)]).then(() => main.querySelectorAll('[data-name]').forEach(el => el.textContent = who(el.dataset.name).name));
   main.innerHTML = `<div class="ele-head"><div><h2 style="margin:0">Cartas a clientes</h2><p class="sub" style="margin:4px 0 0">Se llenan aquí, quedan guardadas y se descargan en PDF para enviarlas por correo.</p></div></div>
-    ${cPuede() ? `<div class="car-nuevas">
-      <button class="car-btn" data-cnueva="entrega"><b>+ Carta de entrega voluntaria</b><span>Se le pide al cliente entregar la moto en 5 días hábiles.</span></button>
-      <button class="car-btn" data-cnueva="visita"><b>+ Constancia de visita</b><span>Requerimiento de pago y entrega, con el saldo en mora y la constancia de recibido.</span></button>
-      <button class="car-btn" data-cnueva="retoma1"><b>+ Notificación de retoma</b><span>La empresa hace efectiva la dación en pago; tiene 3 días para pagar o abonar.</span></button>
-      <button class="car-btn" data-cnueva="retoma2"><b>+ Retoma con saldo pendiente</b><span>La moto no cubrió la deuda: se le informa el saldo que queda.</span></button></div>
-    <p class="small muted car-sub">Electrodomésticos (Casanova)</p>
-    <div class="car-nuevas car-nuevas-e">
-      <button class="car-btn" data-cnueva="eentrega"><b>+ Entrega voluntaria de electrodoméstico</b><span>Se le pide entregar el artículo en 5 días hábiles.</span></button>
-      <button class="car-btn" data-cnueva="eretoma"><b>+ Retoma de electrodoméstico</b><span>Se hace efectiva la dación en pago del artículo; 3 días para pagar o abonar.</span></button></div>` : ''}
+    ${cPuede() ? `<details class="car-menu" id="cMenu"><summary class="btn primary">+ Nueva carta ▾</summary>
+      <div class="car-menu-list" role="menu">
+        <p class="car-menu-g">Motos</p>
+        ${['entrega', 'visita', 'retoma1', 'retoma2'].map(t => `<button type="button" role="menuitem" data-cnueva="${t}"><b>${esc(C_TDESC[t][0])}</b><span>${esc(C_TDESC[t][1])}</span></button>`).join('')}
+        <p class="car-menu-g">Electrodomésticos (Casanova)</p>
+        ${['eentrega', 'eretoma'].map(t => `<button type="button" role="menuitem" data-cnueva="${t}"><b>${esc(C_TDESC[t][0])}</b><span>${esc(C_TDESC[t][1])}</span></button>`).join('')}
+      </div></details>` : ''}
     ${C.cargado && cPuede() ? cPanelRevisar(G) : ''}
     ${S.owner ? cPanelPuntos() + cPanelLecturas() : ''}
     <div class="toolbar" style="margin-top:14px">
@@ -4085,7 +4091,9 @@ function cRender(){
     ${!C.cargado ? '<tr><td colspan="7" class="empty">Cargando cartas…</td></tr>' : lista.map(r => `<tr class="click" data-cid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.d && r.d.fecha)}</td><td>${esc(C_TIPOS[r.tipo] || r.tipo)}</td><td>${esc(r.d && r.d.nombre || '')}${(() => { const x = G[cKey(r.d)]; return x && x.est.cerrado ? `<div class="small muted">Archivado: ${esc(x.est.motivo || '')}${!x.est.auto && cPuede() ? ` <button class="btn" style="min-height:26px;padding:0 8px" data-creab="${esc(x.key)}">Reabrir</button>` : ''}</div>` : ''; })()}</td><td>${r.d && r.d.placa ? plate(r.d.placa) : ''}</td><td><span data-name="${esc(r.por)}">${esc(who(r.por).name)}</span></td><td><button class="btn" data-cpdf="${esc(r.id)}">PDF</button></td></tr>`).join('')
       || `<tr><td colspan="7" class="empty">${Object.keys(C.docs).length ? 'Ninguna carta coincide con la búsqueda.' : 'Todavía no hay cartas guardadas.'}</td></tr>`}
     </tbody></table></div>`;
-  main.querySelectorAll('[data-cnueva]').forEach(b => b.onclick = () => cAbrir(null, b.dataset.cnueva));
+  main.querySelectorAll('[data-cnueva]').forEach(b => b.onclick = () => { const m = $('#cMenu'); if (m) m.open = false; cAbrir(null, b.dataset.cnueva); });
+  if (!C._menuDoc) { C._menuDoc = true; document.addEventListener('click', e => { const m = document.getElementById('cMenu'); if (m && m.open && !m.contains(e.target)) m.open = false; });
+    document.addEventListener('keydown', e => { const m = document.getElementById('cMenu'); if (e.key === 'Escape' && m && m.open) m.open = false; }); }
   $('#cBuscar').oninput = e => { C.f.text = e.target.value; clearTimeout(C._t); C._t = setTimeout(() => { cRender(); const b = $('#cBuscar'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 250); };
   $('#cTipo').onchange = e => { C.f.tipo = e.target.value; cRender(); };
   $('#cPdv').onchange = e => { C.f.pdv = e.target.value; cRender(); };
