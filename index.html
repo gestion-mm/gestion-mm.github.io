@@ -400,6 +400,16 @@ const LECTURA = (() => {
 })();
 
 
+// Aviso cuando se acaba el saldo del lector de tarjetas (Claude): lo ve quien está leyendo y le queda a Kenny en la campanita
+function avisarLector(estado){
+  try { window.dispatchEvent(new CustomEvent('mm-lector', {detail: {estado}})); } catch (e) {}
+  if (estado !== 'sin_saldo' || document.getElementById('mm-sin-saldo')) return;
+  const d = document.createElement('div'); d.id = 'mm-sin-saldo'; d.setAttribute('role', 'alert');
+  d.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;max-width:min(560px,calc(100vw - 32px));background:#b71c1c;color:#fff;border-radius:12px;padding:14px 44px 14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.3);font:15px/1.4 system-ui,sans-serif';
+  d.innerHTML = '<b>Se acabó el saldo del lector de tarjetas.</b><br>Avise a Kenny para que lo recargue. Mientras tanto se usa el lector gratuito, que se equivoca más: revise bien los datos o escríbalos a mano.<button type="button" aria-label="Cerrar aviso" style="position:absolute;top:8px;right:8px;background:none;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1">×</button>';
+  d.querySelector('button').onclick = () => d.remove();
+  document.body.append(d);
+}
 const LECTOR = (() => {
   let carga = null, worker = null;
   function cargarScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.append(s); }); }
@@ -453,8 +463,8 @@ const LECTOR = (() => {
     } catch (e) { return null; }
     if (r.status === 404) { claudeNo = true; return null; }
     let j = null; try { j = await r.json(); } catch (e) {}
-    if (r.ok && j && j.ok && j.datos) return j.datos;
-    if (j && (j.error === 'sin_llave' || j.error === 'sin_saldo')) { claudeNo = true; if (j.error === 'sin_saldo') console.warn('Lectura con Claude: sin saldo'); }
+    if (r.ok && j && j.ok && j.datos) { avisarLector('ok'); return Object.assign(j.datos, {_fuente: 'claude'}); }
+    if (j && (j.error === 'sin_llave' || j.error === 'sin_saldo')) { claudeNo = true; if (j.error === 'sin_saldo') avisarLector('sin_saldo'); }
     return null;
   }
   return {
@@ -462,7 +472,7 @@ const LECTOR = (() => {
       const imgs = (opts && opts.images) || [];
       const c = await leerConClaude(imgs);
       if (c) return c;
-      try { return await leerImagenes(imgs); }
+      try { const g = await leerImagenes(imgs); if (g && typeof g === 'object') g._fuente = 'gratis'; return g; }
       catch (e) { const x = new Error('lectura'); x.code = 'image_rejected'; throw x; }
     },
     async limits() { return { images: { maxCount: 2 } }; }
@@ -982,7 +992,7 @@ table.rep input,table.rep select{min-height:32px;padding:4px 6px}
 .car-btn b{font-size:16px;color:var(--accent)}.car-btn span{font-size:13px;color:var(--muted)}.car-btn:hover{background:var(--surface-2)}
 .car-moto{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 14px;background:var(--surface-2);display:grid;gap:8px}
 .car-res{display:flex;flex-wrap:wrap;gap:6px}.car-o{text-align:center;color:var(--muted);font-size:12px}
-.car-rep{color:#c62828}.car-traer-moto{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--line,#cbd5e1);border-radius:10px;background:var(--soft,#f6f8fc)}.car-traer-moto #cTmMsg{flex-basis:100%}.car-hist{border:1px solid var(--line,#d6dbe6);border-radius:12px;padding:12px 14px;margin:0 0 14px;background:var(--soft,#f6f8fc)}.car-hl{margin:0;padding-left:18px}.car-hl li{margin:3px 0}.car-yo td{background:#fff7d6}.car-menu{position:relative;display:inline-block;margin:12px 0 4px}.car-menu>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center}.car-menu>summary::-webkit-details-marker{display:none}.car-menu-list{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:min(420px,92vw);max-height:70vh;overflow:auto;background:var(--card,#fff);border:1px solid var(--line,#d6dbe6);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px}.car-menu-g{margin:8px 10px 4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#64748b)}.car-menu-list button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:9px 10px;cursor:pointer;font:inherit;color:inherit}.car-menu-list button:hover,.car-menu-list button:focus-visible{background:var(--soft,#eef2fb);outline:none}.car-menu-list button b{display:block;color:var(--blue,#1d3a8a)}.car-menu-list button span{display:block;font-size:13px;color:var(--muted,#64748b)}.car-sub{margin:14px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}.car-nuevas-e{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
+.car-rep{color:#c62828}.car-traer-moto{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--line,#cbd5e1);border-radius:10px;background:var(--soft,#f6f8fc)}.car-traer-moto #cTmMsg{flex-basis:100%}.car-saldo{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#fdecea;border:1px solid #f3b2ac;color:#7f1d1d}.car-hist{border:1px solid var(--line,#d6dbe6);border-radius:12px;padding:12px 14px;margin:0 0 14px;background:var(--soft,#f6f8fc)}.car-hl{margin:0;padding-left:18px}.car-hl li{margin:3px 0}.car-yo td{background:#fff7d6}.car-menu{position:relative;display:inline-block;margin:12px 0 4px}.car-menu>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center}.car-menu>summary::-webkit-details-marker{display:none}.car-menu-list{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:min(420px,92vw);max-height:70vh;overflow:auto;background:var(--card,#fff);border:1px solid var(--line,#d6dbe6);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:6px}.car-menu-g{margin:8px 10px 4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#64748b)}.car-menu-list button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:9px 10px;cursor:pointer;font:inherit;color:inherit}.car-menu-list button:hover,.car-menu-list button:focus-visible{background:var(--soft,#eef2fb);outline:none}.car-menu-list button b{display:block;color:var(--blue,#1d3a8a)}.car-menu-list button span{display:block;font-size:13px;color:var(--muted,#64748b)}.car-sub{margin:14px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}.car-nuevas-e{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
 .lv-traer{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
 .car-g{margin:14px 0 6px;font-size:14px;color:var(--accent)}
 .ele-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-top:18px}
@@ -2804,7 +2814,7 @@ function drawFotos(){
   if (!$('#slotsInv')) return;
   const idx = S.editFotos.map((f,i) => [f,i]);
   const slot = tag => { const hit = idx.filter(([f]) => f.tag === tag); return hit.length ? hit.map(([f,i]) => tile(f,i)).join('') : emptySlot(tag); };
-  $('#slotsInv').innerHTML = SLOTS_INV.map(slot).join('') + SLOTS_PER.map(slot).join('') + idx.filter(([f]) => f.tag === 'Recibo').map(([f,i]) => tile(f,i)).join('') + (S.fotosRO ? '' : emptySlot('Recibo').replace('+ Tomar foto','+ Otra foto'));
+  $('#slotsInv').innerHTML = SLOTS_INV.map(slot).join('') + SLOTS_PER.map(slot).join('') + idx.filter(([f]) => f.tag === 'Recibo').map(([f,i]) => tile(f,i)).join('');
   if ($('#slotsTrasp')) $('#slotsTrasp').innerHTML = slot(TAG_TRASP);
   drawPerEstado();
   const ds = conDS(), vv = {...(S.editCur || {}), ...readForm()};
@@ -3444,11 +3454,13 @@ function campanaItems(){
     .sort((a, b) => (b.h ? b.h.at : '').localeCompare(a.h ? a.h.at : '')) : [];
   if (typeof eIniciar === 'function') eIniciar();
   const eaval = window.ELE ? ELE.pend() : [];
-  return {aval, per, eaval};
+  try { if (typeof cIniciar === 'function' && S.owner) cIniciar(); } catch (e) {}
+  const saldo = S.owner && window.CAR && CAR.sinSaldo() ? [CAR.aviso()] : [];
+  return {aval, per, eaval, saldo};
 }
 function updBell(){
   const b = document.getElementById('mmBell'); if (!b) return;
-  const {aval, per, eaval} = campanaItems(), n = aval.length + per.length + eaval.length;
+  const {aval, per, eaval, saldo} = campanaItems(), n = aval.length + per.length + eaval.length + saldo.length;
   b.hidden = !(isJefe() || S.owner) || S.needLogin || S.pendiente;
   const c = document.getElementById('mmBellN'); c.hidden = !n; c.textContent = n > 99 ? '99+' : n;
   b.classList.toggle('on', n > 0);
@@ -3457,9 +3469,10 @@ function updBell(){
 }
 function drawBell(){
   const p = document.getElementById('mmBellPanel'); if (!p) return;
-  const {aval, per, eaval} = campanaItems();
+  const {aval, per, eaval, saldo} = campanaItems();
   const it = (r, sub, tipo) => `<button type="button" class="bell-it" data-bell="${tipo}" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> ${plate(r.placa)}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')}${sub ? ' · ' + sub : ''}</span></button>`;
   let h = '';
+  if (saldo.length) h += `<div class="bell-h">Lector de tarjetas <span class="chip pill-red">sin saldo</span></div><button type="button" class="bell-it" id="bellSaldo"><span class="bell-t"><b>Se acabó el saldo del lector</b></span><span class="bell-s">Recárguelo en console.anthropic.com → Billing · ${esc(fdt(saldo[0].at))}</span></button>`;
   if (isJefe()) h += `<div class="bell-h">Avalúos por aprobar <span class="chip ${aval.length ? 'pill-warn' : ''}">${aval.length}</span></div>` +
     (aval.map(r => it(r, `retoma propuesta ${money(r.avValorRetoma) || '—'}`, 'aval')).join('') || '<p class="bell-v">No hay avalúos esperando su aprobación.</p>');
   if (isJefe()) h += `<div class="bell-h">Retomas de electrodomésticos por aprobar <span class="chip ${eaval.length ? 'pill-warn' : ''}">${eaval.length}</span></div>` +
@@ -3468,6 +3481,7 @@ function drawBell(){
     (per.map(({r, h: e}) => it(r, (e ? esc(fdt(e.at)) : '') + (perEnProceso(r) ? ' · <span class="rojo">en proceso</span>' : ' · listo'), 'per')).join('') || '<p class="bell-v">No hay motos nuevas en peritaje.</p>');
   p.innerHTML = h;
   p.querySelectorAll('[data-bell]').forEach(x => x.onclick = () => abrirDesdeBell(x.dataset.id, x.dataset.bell));
+  const bs = p.querySelector('#bellSaldo'); if (bs) bs.onclick = () => { cerrarBell(); try { go('car'); } catch (e) {} };
   const t = p.querySelector('#bellTodas'); if (t) t.onclick = () => { marcarVistas(per.map(x => x.r.id)); cerrarBell(); };
 }
 function cerrarBell(){ const p = document.getElementById('mmBellPanel'); if (p) p.hidden = true; const b = document.getElementById('mmBell'); if (b) b.setAttribute('aria-expanded', 'false'); }
@@ -3905,7 +3919,7 @@ const C_LOGO_CAS = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAQDAwMDAgQDAwMEBAQFBgoGBgUF
    CARTAS A CLIENTES · entrega voluntaria y constancia de visita (nov. 2026)
    Quedan guardadas en la colección 'cartas' y se descargan en PDF.
    ===================================================================== */
-var C = {docs: {}, lec: {}, cli: {}, levP: {}, cargado: false, iniciado: false, f: {text: '', tipo: '', pdv: '', per: 'mes', vista: 'vig'}, lib: null};
+var C = {docs: {}, lec: {}, cli: {}, levP: {}, aviso: null, cargado: false, iniciado: false, f: {text: '', tipo: '', pdv: '', per: 'mes', vista: 'vig'}, lib: null};
 const C_DIAS_REVISAR = 90;
 const cPuntos = () => [...new Set((typeof E_PDVS !== 'undefined' ? E_PDVS : PDVS).map(x => String(x).toUpperCase()))].sort((a, b) => a.localeCompare(b, 'es'));
 const cPdvDe = r => String((r.d && r.d.ciudad) || '').toUpperCase().trim();
@@ -3948,7 +3962,7 @@ const cLs = (k, v) => { try { if (v === undefined) return localStorage.getItem('
 function cIniciar(){
   if (C.iniciado || !S.db) return; C.iniciado = true;
   S.db.collection('cartas').onSnapshot(snap => {
-    const o = {}, l = {}, c = {}; snap.docs.forEach(d => { const x = {...d.data(), id: d.id}; if (x.tipo === 'lectura') l[d.id] = x; else if (x.tipo === 'cliente') c[d.id] = x; else o[d.id] = x; }); C.docs = o; C.lec = l; C.cli = c; C.cargado = true;
+    const o = {}, l = {}, c = {}; snap.docs.forEach(d => { const x = {...d.data(), id: d.id}; if (x.tipo === 'lectura') l[d.id] = x; else if (x.tipo === 'cliente') c[d.id] = x; else if (x.tipo === 'aviso') { if (d.id === 'aviso_lector') C.aviso = x; } else o[d.id] = x; }); C.docs = o; C.lec = l; C.cli = c; try { updBell(); } catch (e) {} C.cargado = true;
     const m = document.getElementById('mod-car'); if (m && !m.hidden && !$('#modal-root').innerHTML) cRender();
   }, () => { C.cargado = true; cRender(); });
   // levantamientos de prenda: si a la placa ya se le hizo levantamiento (paz y salvo), el cliente se archiva solo
@@ -3957,6 +3971,15 @@ function cIniciar(){
     C.levP = m; const mc = document.getElementById('mod-car'); if (mc && !mc.hidden && !$('#modal-root').innerHTML) cRender();
   }).catch(() => {});
 }
+
+/* ---------- saldo del lector de tarjetas ---------- */
+const cSinSaldo = () => !!(C.aviso && C.aviso.sinSaldo);
+async function cMarcarSaldo(sin){
+  if (!S.db || cSinSaldo() === sin) return;
+  const doc = {tipo: 'aviso', sinSaldo: sin, at: new Date().toISOString(), por: actorId()};
+  try { await S.db.doc('cartas/aviso_lector').set(doc); C.aviso = doc; try { updBell(); } catch (e) {} const m = document.getElementById('mod-car'); if (m && !m.hidden && !$('#modal-root').innerHTML) cRender(); } catch (e) {}
+}
+window.addEventListener('mm-lector', e => { const st = e.detail && e.detail.estado; if (st === 'sin_saldo') cMarcarSaldo(true); else if (st === 'ok' && cSinSaldo()) cMarcarSaldo(false); });
 
 /* ---------- vigencia de los clientes: archivar los que ya no están en cobro ---------- */
 const cKey = d => { d = d || {}; return nid(d.placa) || (nid(d.cc) ? 'cc' + nid(d.cc) : 'n' + nid(d.nombre)); };
@@ -4079,6 +4102,7 @@ function cRender(){
         <p class="car-menu-g">Electrodomésticos (Casanova)</p>
         ${['eentrega', 'eretoma'].map(t => `<button type="button" role="menuitem" data-cnueva="${t}"><b>${esc(C_TDESC[t][0])}</b><span>${esc(C_TDESC[t][1])}</span></button>`).join('')}
       </div></details>` : ''}
+    ${S.owner && cSinSaldo() ? `<div class="car-saldo" role="alert"><div><b>Se acabó el saldo del lector de tarjetas.</b> Lo detectó <span data-name="${esc(C.aviso.por || '')}">${esc(who(C.aviso.por).name)}</span> el ${esc(cFH(C.aviso.at))}. Mientras tanto se usa el lector gratuito.<br><span class="small">Recárguelo en <b>console.anthropic.com → Billing</b>. Cuando el lector vuelva a leer, este aviso se quita solo.</span></div>${!S.readOnly ? '<button class="btn" id="cSaldoOk">Ya recargué</button>' : ''}</div>` : ''}
     ${C.cargado && cPuede() ? cPanelRevisar(G) : ''}
     ${S.owner ? cPanelPuntos() + cPanelLecturas() : ''}
     <div class="toolbar" style="margin-top:14px">
@@ -4098,6 +4122,7 @@ function cRender(){
   $('#cTipo').onchange = e => { C.f.tipo = e.target.value; cRender(); };
   $('#cPdv').onchange = e => { C.f.pdv = e.target.value; cRender(); };
   $('#cVista').onchange = e => { C.f.vista = e.target.value; cRender(); };
+  if ($('#cSaldoOk')) $('#cSaldoOk').onclick = () => cMarcarSaldo(false);
   main.querySelectorAll('[data-cvig]').forEach(b => b.onclick = () => { const x = G[b.dataset.cvig]; if (x) cMarcar(x, 'vigente', ''); });
   main.querySelectorAll('[data-carch]').forEach(b => b.onclick = () => { const x = G[b.dataset.carch]; if (!x) return; const m = main.querySelector(`[data-cmot="${CSS.escape(b.dataset.carch)}"]`); cMarcar(x, 'cerrado', m ? m.value : ''); });
   main.querySelectorAll('[data-creab]').forEach(b => b.onclick = e => { e.stopPropagation(); const x = G[b.dataset.creab]; if (x) cMarcar(x, 'vigente', 'Reabierto'); });
@@ -4303,7 +4328,7 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
         // queda registrada; si la placa leída ya estaba guardada, se marca como repetida para que Kenny la vea
         const donde = dd.placa ? cDondeEsta(dd.placa) : '';
         const lid = 'lec' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-        const lec = {tipo: 'lectura', at: new Date().toISOString(), por: actorId(), cobrada: true, placaEscrita: tp.value.toUpperCase().trim(), datos: dd, huella, repetida: !!donde, donde};
+        const lec = {tipo: 'lectura', at: new Date().toISOString(), por: actorId(), cobrada: r._fuente !== 'gratis', placaEscrita: tp.value.toUpperCase().trim(), datos: dd, huella, repetida: !!donde, donde};
         try { await S.db.doc('cartas/' + lid).set(lec); C.lec[lid] = {...lec, id: lid}; } catch (e) {}
         const dudas = (r.dudas || []).filter(x => x && x.campo).map(x => x.campo);
         msg.innerHTML = (dd.placa || dd.nombre ? `Listo. <b>Revisa los datos</b> antes de guardar${dudas.length ? ` (ojo con: ${esc(dudas.join(', '))})` : ''}.` : 'No se pudo leer bien la tarjeta. Intenta con una foto más clara o escribe los datos.')
@@ -4591,7 +4616,7 @@ async function cHacerPdf(tipo, d){
   }
   return await doc.save();
 }
-window.CAR = {render: cRender, iniciar: cIniciar};
+window.CAR = {sinSaldo: () => cSinSaldo(), aviso: () => C.aviso, render: cRender, iniciar: cIniciar};
 
 /* ---------- Motos retenidas: al registrar una moto nueva, traer los datos de la carta de retención ---------- */
 function cDatosPlaca(P){
