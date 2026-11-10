@@ -4234,20 +4234,41 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
         if (e) { if (!junto.ciudadCliente && e.pdv) junto.ciudadCliente = e.pdv; if (e.fechaRecibo) junto.fechaEntrega = e.fechaRecibo; } }
       if (m) { if (!junto.ciudadCliente && m.pdv) junto.ciudadCliente = m.pdv; if (m.fechaRecibo) junto.fechaEntrega = m.fechaRecibo; }
       for (const [k, v] of Object.entries(junto)) pon(k, v);
+      autoFecha();
       cTotal(); res.innerHTML = `<span class="small">Listo: se copiaron los datos de ${todas.length > 1 ? todas.length + ' cartas anteriores' : 'la carta del ' + esc(fd(x.d.fecha))}${m ? ' y de la moto registrada' : ''}. Revisa la fecha${tipo === 'visita' ? ' y el saldo en mora' : tipo === 'retoma1' ? ' y la fecha de entrega' : tipo === 'retoma2' ? ' y el saldo pendiente' : ''} y guarda.</span>`; mi.value = '';
     });
     res.querySelectorAll('[data-ce]').forEach(b => b.onclick = () => {
       const e = eLista().find(x => x.id === b.dataset.ce); if (!e) return;
-      pon('nombre', e.deudor); pon('ciudad', e.pdv); pon('ciudadCliente', e.pdv); const ref = String(e.referencia || ''), cod = e.codigo || (ref.match(/c[oó]d\.?\s*([\w-]+)/i) || [])[1] || ''; pon('articulo', ref.split('·')[0].trim() || e.tipo); pon('marca', e.marca); pon('color', e.color); pon('codigo', cod); pon('fechaEntrega', e.fechaRecibo);
+      pon('nombre', e.deudor); pon('ciudad', e.pdv); pon('ciudadCliente', e.pdv); const ref = String(e.referencia || ''), cod = e.codigo || (ref.match(/c[oó]d\.?\s*([\w-]+)/i) || [])[1] || ''; pon('articulo', ref.split('·')[0].trim() || e.tipo); pon('marca', e.marca); pon('color', e.color); pon('codigo', cod); pon('fechaEntrega', e.fechaRecibo); autoFecha();
       res.innerHTML = '<span class="small">Listo: se llenaron los datos del electrodoméstico registrado. Revísalos y completa lo que falte (color, código…).</span>'; mi.value = '';
     });
     res.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => {
       const m = records().find(x => x.id === b.dataset.cm); if (!m) return;
       pon('nombre', m.deudor); pon('placa', m.placa); pon('marca', m.marca); pon('linea', m.linea); pon('modelo', m.modelo); pon('chasis', m.chasis); pon('motor', m.motor); pon('color', m.color);
-      pon('ciudadCliente', m.pdv); pon('ciudad', m.pdv); pon('fechaEntrega', m.fechaRecibo);
+      pon('ciudadCliente', m.pdv); pon('ciudad', m.pdv); pon('fechaEntrega', m.fechaRecibo); autoFecha();
       res.innerHTML = `<span class="small">Listo: se llenaron los datos de la moto${tipo === 'retoma1' ? ' (con la fecha de entrega)' : ''}. Revísalos${tipo === 'retoma2' ? ' y escribe el saldo pendiente' : ''}.</span>`; mi.value = '';
     });
   };
+  // retomas: la fecha en que se entregó sale sola de la fecha de retención registrada en Motos retenidas / Electrodomésticos
+  function autoFecha(){
+    const f = $('#c_fechaEntrega'); if (!f || ro) return;
+    const val = id => nid(($('#c_' + id) || {}).value || '');
+    const desc = (a, b) => String(b.fechaRecibo || '').localeCompare(String(a.fechaRecibo || ''));
+    let reg = null, de = '';
+    if (C_ELE.has(tipo)) {
+      if (typeof eLista !== 'function') return;
+      const N = val('nombre'), K = val('codigo');
+      reg = eLista().filter(z => z.fechaRecibo && ((N && nid(z.deudor) === N) || (K.length >= 3 && nid(String(z.codigo || '') + ' ' + String(z.referencia || '')).includes(K)))).sort(desc)[0]; de = 'Electrodomésticos';
+    } else {
+      const P = val('placa'); if (P.length < 5) return;
+      reg = records().filter(z => z.fechaRecibo && nid(z.placa) === P).sort(desc)[0]; de = 'Motos retenidas';
+    }
+    let h = document.getElementById('cFeHint'); if (!h) { h = document.createElement('span'); h.className = 'hint'; h.id = 'cFeHint'; f.closest('.field').appendChild(h); }
+    if (!reg) { h.textContent = f.value ? '' : `No está registrado en ${de}: escriba la fecha.`; return; }
+    if (f.dataset.manual === '1' && f.value && f.value !== reg.fechaRecibo) { h.textContent = `Ojo: en ${de} la retención quedó registrada el ${fd(reg.fechaRecibo)}.`; return; }
+    f.value = reg.fechaRecibo; h.textContent = `Tomada de ${de} (N.° ${reg.numero || ''}, retención del ${fd(reg.fechaRecibo)}).`;
+  }
+  if ($('#c_fechaEntrega')) { $('#c_fechaEntrega').addEventListener('input', e => { e.target.dataset.manual = '1'; }); ['placa', 'nombre', 'codigo'].forEach(k => { const el = $('#c_' + k); if (el) el.addEventListener('change', autoFecha); }); }
   const bt = $('#cTarjeta'), tp = $('#cTarPlaca');
   const ponLec = x => { const dd = cLecDatos(x); for (const k of ['nombre', 'cc', 'placa', 'marca', 'linea', 'modelo', 'motor', 'chasis', 'color']) pon(k, dd[k]); };
   const llenarSinLeer = P => {
@@ -4256,7 +4277,7 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
     const nunca = new Set(['fecha', 'hora', 'fechaCorte', 'plazo', 'venc', 'cuotas', 'dias', 'capital', 'intereses', 'saldo']);
     const l = Object.values(C.lec).filter(x => x.datos && nid(x.datos.placa) === P).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
     const m = records().find(x => nid(x.placa) === P);
-    if (m) { pon('nombre', m.deudor); pon('placa', m.placa); pon('marca', m.marca); pon('linea', m.linea); pon('modelo', m.modelo); pon('chasis', m.chasis); pon('motor', m.motor); pon('color', m.color); pon('ciudadCliente', m.pdv); pon('fechaEntrega', m.fechaRecibo); }
+    if (m) { pon('nombre', m.deudor); pon('placa', m.placa); pon('marca', m.marca); pon('linea', m.linea); pon('modelo', m.modelo); pon('chasis', m.chasis); pon('motor', m.motor); pon('color', m.color); pon('ciudadCliente', m.pdv); pon('fechaEntrega', m.fechaRecibo); autoFecha(); }
     if (l) ponLec(l.datos);
     for (const c of cs) for (const [k, v] of Object.entries(c.d)) if (!nunca.has(k)) pon(k, v);
     return cs.length || l || m;
@@ -4278,7 +4299,7 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
         const lector = window.claude && window.claude.use ? await window.claude.use('sample') : null;
         if (!lector) throw new Error('sin lector');
         const r = await lector.json('Lee una Licencia de Tránsito (tarjeta de propiedad) de Colombia', {images: await cRecortar(files)});
-        const dd = cLecDatos(r); ponLec(r);
+        const dd = cLecDatos(r); ponLec(r); autoFecha();
         // queda registrada; si la placa leída ya estaba guardada, se marca como repetida para que Kenny la vea
         const donde = dd.placa ? cDondeEsta(dd.placa) : '';
         const lid = 'lec' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
