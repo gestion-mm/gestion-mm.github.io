@@ -982,7 +982,7 @@ table.rep input,table.rep select{min-height:32px;padding:4px 6px}
 .car-btn b{font-size:16px;color:var(--accent)}.car-btn span{font-size:13px;color:var(--muted)}.car-btn:hover{background:var(--surface-2)}
 .car-moto{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 14px;background:var(--surface-2);display:grid;gap:8px}
 .car-res{display:flex;flex-wrap:wrap;gap:6px}.car-o{text-align:center;color:var(--muted);font-size:12px}
-.car-rep{color:#c62828}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
+.car-rep{color:#c62828}.car-acc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.car-acc .btn{min-height:32px;padding:0 10px}.car-acc select{min-height:32px;max-width:220px}.car-rev{border-color:#f0b4b4}.car-scroll{max-height:340px;overflow:auto}.car-scroll thead th{position:sticky;top:0;z-index:1}.car-lec{margin-top:8px}.car-lec{margin-top:12px}.car-lec summary{cursor:pointer}
 .lv-traer{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
 .car-g{margin:14px 0 6px;font-size:14px;color:var(--accent)}
 .ele-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-top:18px}
@@ -3904,7 +3904,10 @@ const C_FIRMA = 'iVBORw0KGgoAAAANSUhEUgAAArwAAAKsCAYAAAAObG7YAAEAAElEQVR42uydd3x
    CARTAS A CLIENTES · entrega voluntaria y constancia de visita (nov. 2026)
    Quedan guardadas en la colección 'cartas' y se descargan en PDF.
    ===================================================================== */
-var C = {docs: {}, lec: {}, cargado: false, iniciado: false, f: {text: '', tipo: ''}, lib: null};
+var C = {docs: {}, lec: {}, cli: {}, levP: {}, cargado: false, iniciado: false, f: {text: '', tipo: '', pdv: '', per: 'mes', vista: 'vig'}, lib: null};
+const C_DIAS_REVISAR = 90;
+const cPuntos = () => [...new Set((typeof E_PDVS !== 'undefined' ? E_PDVS : PDVS).map(x => String(x).toUpperCase()))].sort((a, b) => a.localeCompare(b, 'es'));
+const cPdvDe = r => String((r.d && r.d.ciudad) || '').toUpperCase().trim();
 const C_EMPRESA = 'INVERSIONES MOTOS Y MOTOCARROS SAS', C_NIT = '900499748-7', C_CEL = '3208086239', C_CORREO = 'carteramym17@gmail.com';
 const C_PIE = ['INVERSIONES MOTOS Y MOTOCARROS S.A.S. · NIT 900.499.748-7', 'Cll. 21 # 6-63, B/ Loma Fresca, Caucasia – Antioquia'];
 const C_TIPOS = {entrega: 'Entrega voluntaria del vehículo', visita: 'Constancia de visita', retoma1: 'Notificación de retoma', retoma2: 'Retoma con saldo pendiente'};
@@ -3934,10 +3937,57 @@ const cLs = (k, v) => { try { if (v === undefined) return localStorage.getItem('
 function cIniciar(){
   if (C.iniciado || !S.db) return; C.iniciado = true;
   S.db.collection('cartas').onSnapshot(snap => {
-    const o = {}, l = {}; snap.docs.forEach(d => { const x = {...d.data(), id: d.id}; if (x.tipo === 'lectura') l[d.id] = x; else o[d.id] = x; }); C.docs = o; C.lec = l; C.cargado = true;
+    const o = {}, l = {}, c = {}; snap.docs.forEach(d => { const x = {...d.data(), id: d.id}; if (x.tipo === 'lectura') l[d.id] = x; else if (x.tipo === 'cliente') c[d.id] = x; else o[d.id] = x; }); C.docs = o; C.lec = l; C.cli = c; C.cargado = true;
     const m = document.getElementById('mod-car'); if (m && !m.hidden && !$('#modal-root').innerHTML) cRender();
   }, () => { C.cargado = true; cRender(); });
+  // levantamientos de prenda: si a la placa ya se le hizo levantamiento (paz y salvo), el cliente se archiva solo
+  S.db.collection('levantamientos').get().then(sn => {
+    const m = {}; sn.docs.forEach(d => { const x = d.data() || {}; const p = nid(x.placa || ''); const f = String(x.fecha || x.creadoEn || '').slice(0, 10); if (p && f && (!m[p] || f > m[p])) m[p] = f; });
+    C.levP = m; const mc = document.getElementById('mod-car'); if (mc && !mc.hidden && !$('#modal-root').innerHTML) cRender();
+  }).catch(() => {});
 }
+
+/* ---------- vigencia de los clientes: archivar los que ya no están en cobro ---------- */
+const cKey = d => { d = d || {}; return nid(d.placa) || (nid(d.cc) ? 'cc' + nid(d.cc) : 'n' + nid(d.nombre)); };
+function cClientes(){
+  const g = {};
+  for (const r of Object.values(C.docs)) {
+    if (r.eliminada || !r.d) continue;
+    const k = cKey(r.d); const x = g[k] || (g[k] = {key: k, cartas: [], ult: null, por: new Set()});
+    x.cartas.push(r); x.por.add(r.por); if (!x.ult || String(r.at) > String(x.ult.at)) x.ult = r;
+  }
+  for (const x of Object.values(g)) x.est = cEstado(x);
+  return g;
+}
+function cEstado(x){
+  const ult = String(x.ult.at || '').slice(0, 10) || (x.ult.d && x.ult.d.fecha) || '';
+  const pl = nid(x.ult.d.placa), lev = pl && C.levP[pl];
+  if (lev && lev >= ult) return {cerrado: true, motivo: `Levantamiento de prenda (paz y salvo) del ${fd(lev)}`, auto: true};
+  const st = C.cli['cli_' + x.key];
+  if (st && st.estado === 'cerrado' && String(st.at) >= String(x.ult.at)) return {cerrado: true, motivo: st.motivo, por: st.por, en: st.at};
+  const desde = st && st.estado === 'vigente' && String(st.at) > String(x.ult.at) ? String(st.at).slice(0, 10) : ult;
+  const dias = Math.floor((new Date(todayISO() + 'T12:00:00') - new Date(desde + 'T12:00:00')) / 864e5);
+  return {cerrado: false, dias, revisar: dias >= C_DIAS_REVISAR, revisadoEn: st && st.estado === 'vigente' ? st.at : ''};
+}
+async function cMarcar(x, estado, motivo){
+  const d = x.ult.d || {};
+  const doc = {tipo: 'cliente', key: x.key, estado, motivo: motivo || '', at: new Date().toISOString(), por: actorId(), placa: d.placa || '', nombre: d.nombre || ''};
+  try { await S.db.doc('cartas/cli_' + x.key).set(doc); C.cli['cli_' + x.key] = {...doc, id: 'cli_' + x.key}; toast(estado === 'cerrado' ? 'Cliente archivado: sus cartas quedan guardadas en "Archivadas".' : estado === 'vigente' ? 'Listo: se le volverá a preguntar en ' + C_DIAS_REVISAR + ' días.' : 'Listo'); cRender(); }
+  catch (e) { toast('No se pudo guardar. Intenta otra vez.'); }
+}
+const C_MOTIVOS = ['Pagó / paz y salvo', 'Se retomó la moto y quedó a paz y salvo', 'Pasó a cobro jurídico', 'Refinanció / hizo acuerdo de pago', 'Otro motivo'];
+function cPanelRevisar(G){
+  const mios = x => S.owner || x.por.has(actorId());
+  const rev = Object.values(G).filter(x => !x.est.cerrado && x.est.revisar && mios(x)).sort((a, b) => b.est.dias - a.est.dias);
+  if (!rev.length) return '';
+  return `<details class="e-plega car-lec car-rev" id="cRevD" ${C._revAb ? 'open' : ''}><summary>Clientes por revisar: <b class="car-rep">${rev.length}</b> sin carta nueva hace más de ${C_DIAS_REVISAR} días. ¿Siguen vigentes? <span class="small muted">(toque para ver)</span></summary>
+    <p class="small muted" style="margin:8px 0">Si el cliente sigue en cobro, toque <b>Sigue en cobro</b> y se le volverá a preguntar en ${C_DIAS_REVISAR} días. Si ya no, escoja el motivo y toque <b>Archivar</b>: sus cartas no se borran, pasan a "Archivadas" y siguen contando en los informes. ${S.owner ? '' : 'Aquí le salen los clientes de las cartas que usted hizo.'}</p>
+    <div class="tbl-wrap car-scroll"><table><thead><tr><th>Cliente</th><th>Placa</th><th>Punto</th><th>Última carta</th><th class="num">Días</th><th></th></tr></thead><tbody>
+    ${rev.slice(0, 100).map(x => `<tr><td>${esc(x.ult.d.nombre || '')}</td><td>${x.ult.d.placa ? plate(x.ult.d.placa) : ''}</td><td>${esc(cPdvDe(x.ult))}</td><td>${esc(C_TIPOS[x.ult.tipo] || '')} · ${fd(x.ult.d.fecha)}</td><td class="num">${x.est.dias}</td>
+      <td><div class="car-acc"><button class="btn" data-cvig="${esc(x.key)}">Sigue en cobro</button><select data-cmot="${esc(x.key)}" aria-label="Motivo">${C_MOTIVOS.map(m => `<option>${esc(m)}</option>`).join('')}</select><button class="btn danger" data-carch="${esc(x.key)}">Archivar</button></div></td></tr>`).join('')}
+    </tbody></table></div></details>`;
+}
+
 
 // la hoja escaneada (foto, PDF o Word) se recorta en cada cara de la tarjeta, igual que en Levantamientos: se lee mejor
 async function cRecortar(files){
@@ -3972,9 +4022,33 @@ function cPanelLecturas(){
   const mes = todayISO().slice(0, 7), delMes = lecs.filter(l => String(l.at).slice(0, 7) === mes);
   const pagas = delMes.filter(l => l.cobrada), rep = lecs.filter(l => l.repetida), repMes = rep.filter(l => String(l.at).slice(0, 7) === mes);
   const gratis = delMes.filter(l => !l.cobrada).length;
-  return `<details class="e-plega car-lec" ${repMes.length ? 'open' : ''}><summary>Lecturas de tarjeta este mes: <b>${pagas.length}</b> pagada${pagas.length === 1 ? '' : 's'}${repMes.length ? ` · <b class="car-rep">${repMes.length} repetida${repMes.length > 1 ? 's' : ''}</b>` : ' · ninguna repetida'}${gratis ? ` · ${gratis} sin costo (ya estaban)` : ''}</summary>
+  return `<details class="e-plega car-lec" id="cLecD" ${C._lecAb ? 'open' : ''}><summary>Lecturas de tarjeta este mes: <b>${pagas.length}</b> pagada${pagas.length === 1 ? '' : 's'}${repMes.length ? ` · <b class="car-rep">${repMes.length} repetida${repMes.length > 1 ? 's' : ''}</b>` : ' · ninguna repetida'}${gratis ? ` · ${gratis} sin costo (ya estaban)` : ''}</summary>
     <p class="small muted" style="margin:8px 0">Una lectura <b>repetida</b> es una tarjeta que se volvió a leer (y se pagó) cuando esa placa ya estaba guardada en la aplicación. Solo usted ve este cuadro.</p>
-    ${rep.length ? `<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Quién la leyó</th><th>Placa</th><th>Ya estaba en</th></tr></thead><tbody>${rep.slice(0, 50).map(l => `<tr><td>${fd(String(l.at).slice(0, 10))}</td><td><span data-name="${esc(l.por)}">${esc(who(l.por).name)}</span></td><td>${plate(l.datos && l.datos.placa || l.placaEscrita || '')}</td><td>${esc(l.donde || '')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="small" style="margin:0">No hay lecturas repetidas. 👍</p>'}
+    ${rep.length ? `<div class="tbl-wrap car-scroll"><table><thead><tr><th>Fecha</th><th>Quién la leyó</th><th>Placa</th><th>Ya estaba en</th></tr></thead><tbody>${rep.slice(0, 50).map(l => `<tr><td>${fd(String(l.at).slice(0, 10))}</td><td><span data-name="${esc(l.por)}">${esc(who(l.por).name)}</span></td><td>${plate(l.datos && l.datos.placa || l.placaEscrita || '')}</td><td>${esc(l.donde || '')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="small" style="margin:0">No hay lecturas repetidas. 👍</p>'}
+  </details>`;
+}
+
+/* ---------- cartas por punto de venta (para medir qué puntos tienen más motos por retener) ---------- */
+function cPanelPuntos(){
+  const hoy = todayISO(), mes = hoy.slice(0, 7);
+  const d0 = new Date(hoy + 'T12:00:00'); d0.setMonth(d0.getMonth() - 1); const mesAnt = d0.toISOString().slice(0, 7);
+  const enPer = f => { f = String(f || ''); return C.f.per === 'mes' ? f.slice(0, 7) === mes : C.f.per === 'ant' ? f.slice(0, 7) === mesAnt : C.f.per === 'anio' ? f.slice(0, 4) === hoy.slice(0, 4) : true; };
+  const g = {};
+  for (const r of Object.values(C.docs)) {
+    if (r.eliminada || !enPer(r.d && r.d.fecha)) continue;
+    const p = cPdvDe(r) || 'SIN PUNTO', k = nid(p); const x = g[k] || (g[k] = {p, entrega: 0, visita: 0, retoma: 0, total: 0, cli: new Set()});
+    if (r.tipo === 'entrega') x.entrega++; else if (r.tipo === 'visita') x.visita++; else x.retoma++;
+    x.total++; x.cli.add(nid((r.d && (r.d.placa || r.d.cc || r.d.nombre)) || r.id));
+  }
+  const filas = Object.values(g).sort((a, b) => b.total - a.total || a.p.localeCompare(b.p, 'es'));
+  const tot = filas.reduce((s, x) => s + x.total, 0), cli = filas.reduce((s, x) => s + x.cli.size, 0);
+  const nombres = {mes: 'este mes', ant: 'el mes pasado', anio: 'este año', todo: 'en total'};
+  return `<details class="e-plega car-lec" id="cPtos" ${C._abierto ? 'open' : ''}><summary>Cartas por punto de venta ${nombres[C.f.per]}: <b>${tot}</b> carta${tot === 1 ? '' : 's'} · ${cli} cliente${cli === 1 ? '' : 's'}</summary>
+    <div class="toolbar" style="margin:8px 0"><select id="cPer" aria-label="Periodo"><option value="mes" ${C.f.per === 'mes' ? 'selected' : ''}>Este mes</option><option value="ant" ${C.f.per === 'ant' ? 'selected' : ''}>Mes pasado</option><option value="anio" ${C.f.per === 'anio' ? 'selected' : ''}>Este año</option><option value="todo" ${C.f.per === 'todo' ? 'selected' : ''}>Todo</option></select>
+    <span class="small muted">Cuenta por la fecha de la carta. Toque un punto para ver sus cartas.</span></div>
+    ${filas.length ? `<div class="tbl-wrap car-scroll"><table><thead><tr><th>Punto de venta</th><th class="num">Entrega voluntaria</th><th class="num">Visita</th><th class="num">Retoma</th><th class="num">Total cartas</th><th class="num">Clientes</th></tr></thead><tbody>
+      ${filas.map(x => `<tr class="click" data-cpto="${esc(x.p)}"><td><b>${esc(x.p)}</b></td><td class="num">${x.entrega}</td><td class="num">${x.visita}</td><td class="num">${x.retoma}</td><td class="num"><b>${x.total}</b></td><td class="num">${x.cli.size}</td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="small" style="margin:0">No hay cartas en este periodo.</p>'}
   </details>`;
 }
 
@@ -3982,7 +4056,8 @@ function cPanelLecturas(){
 function cRender(){
   const main = document.getElementById('car-main'); if (!main) return;
   cIniciar();
-  const lista = Object.values(C.docs).filter(r => !r.eliminada).filter(r => (!C.f.tipo || r.tipo === C.f.tipo) && (!C.f.text || nid([r.d && r.d.nombre, r.d && r.d.placa, r.d && r.d.cc, r.numero].join(' ')).includes(nid(C.f.text))))
+  const G = cClientes(), cerr = r => { const x = G[cKey(r.d)]; return !!(x && x.est.cerrado); };
+  const lista = Object.values(C.docs).filter(r => !r.eliminada).filter(r => (C.f.vista === 'todas' || (C.f.vista === 'arch' ? cerr(r) : !cerr(r)))).filter(r => (!C.f.tipo || r.tipo === C.f.tipo) && (!C.f.pdv || nid(cPdvDe(r)) === nid(C.f.pdv)) && (!C.f.text || nid([r.d && r.d.nombre, r.d && r.d.placa, r.d && r.d.cc, r.numero].join(' ')).includes(nid(C.f.text))))
     .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
   names([...lista.map(r => r.por), ...Object.values(C.lec).map(l => l.por)]).then(() => main.querySelectorAll('[data-name]').forEach(el => el.textContent = who(el.dataset.name).name));
   main.innerHTML = `<div class="ele-head"><div><h2 style="margin:0">Cartas a clientes</h2><p class="sub" style="margin:4px 0 0">Se llenan aquí, quedan guardadas y se descargan en PDF para enviarlas por correo.</p></div></div>
@@ -3991,18 +4066,31 @@ function cRender(){
       <button class="car-btn" data-cnueva="visita"><b>+ Constancia de visita</b><span>Requerimiento de pago y entrega, con el saldo en mora y la constancia de recibido.</span></button>
       <button class="car-btn" data-cnueva="retoma1"><b>+ Notificación de retoma</b><span>La empresa hace efectiva la dación en pago; tiene 3 días para pagar o abonar.</span></button>
       <button class="car-btn" data-cnueva="retoma2"><b>+ Retoma con saldo pendiente</b><span>La moto no cubrió la deuda: se le informa el saldo que queda.</span></button></div>` : ''}
-    ${S.owner ? cPanelLecturas() : ''}
+    ${C.cargado && cPuede() ? cPanelRevisar(G) : ''}
+    ${S.owner ? cPanelPuntos() + cPanelLecturas() : ''}
     <div class="toolbar" style="margin-top:14px">
       <input type="search" id="cBuscar" placeholder="Buscar por cliente, cédula o placa…" value="${esc(C.f.text)}" aria-label="Buscar">
+      <select id="cVista" aria-label="Vigentes o archivadas"><option value="vig" ${C.f.vista === 'vig' ? 'selected' : ''}>Clientes vigentes</option><option value="arch" ${C.f.vista === 'arch' ? 'selected' : ''}>Archivadas</option><option value="todas" ${C.f.vista === 'todas' ? 'selected' : ''}>Vigentes y archivadas</option></select>
+      <select id="cPdv" aria-label="Punto de venta"><option value="">Todos los puntos</option>${[...new Set([...cPuntos(), ...Object.values(C.docs).map(cPdvDe).filter(Boolean)])].sort((a, b) => a.localeCompare(b, 'es')).map(p => `<option ${C.f.pdv === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
       <select id="cTipo" aria-label="Tipo de carta"><option value="">Todas las cartas</option>${Object.entries(C_TIPOS).map(([k, l]) => `<option value="${k}" ${C.f.tipo === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     </div>
     <div class="tbl-wrap"><table><thead><tr><th class="num">N.°</th><th>Fecha</th><th>Carta</th><th>Cliente</th><th>Placa</th><th>Hecha por</th><th></th></tr></thead><tbody>
-    ${!C.cargado ? '<tr><td colspan="7" class="empty">Cargando cartas…</td></tr>' : lista.map(r => `<tr class="click" data-cid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.d && r.d.fecha)}</td><td>${esc(C_TIPOS[r.tipo] || r.tipo)}</td><td>${esc(r.d && r.d.nombre || '')}</td><td>${r.d && r.d.placa ? plate(r.d.placa) : ''}</td><td><span data-name="${esc(r.por)}">${esc(who(r.por).name)}</span></td><td><button class="btn" data-cpdf="${esc(r.id)}">PDF</button></td></tr>`).join('')
+    ${!C.cargado ? '<tr><td colspan="7" class="empty">Cargando cartas…</td></tr>' : lista.map(r => `<tr class="click" data-cid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.d && r.d.fecha)}</td><td>${esc(C_TIPOS[r.tipo] || r.tipo)}</td><td>${esc(r.d && r.d.nombre || '')}${(() => { const x = G[cKey(r.d)]; return x && x.est.cerrado ? `<div class="small muted">Archivado: ${esc(x.est.motivo || '')}${!x.est.auto && cPuede() ? ` <button class="btn" style="min-height:26px;padding:0 8px" data-creab="${esc(x.key)}">Reabrir</button>` : ''}</div>` : ''; })()}</td><td>${r.d && r.d.placa ? plate(r.d.placa) : ''}</td><td><span data-name="${esc(r.por)}">${esc(who(r.por).name)}</span></td><td><button class="btn" data-cpdf="${esc(r.id)}">PDF</button></td></tr>`).join('')
       || `<tr><td colspan="7" class="empty">${Object.keys(C.docs).length ? 'Ninguna carta coincide con la búsqueda.' : 'Todavía no hay cartas guardadas.'}</td></tr>`}
     </tbody></table></div>`;
   main.querySelectorAll('[data-cnueva]').forEach(b => b.onclick = () => cAbrir(null, b.dataset.cnueva));
   $('#cBuscar').oninput = e => { C.f.text = e.target.value; clearTimeout(C._t); C._t = setTimeout(() => { cRender(); const b = $('#cBuscar'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 250); };
   $('#cTipo').onchange = e => { C.f.tipo = e.target.value; cRender(); };
+  $('#cPdv').onchange = e => { C.f.pdv = e.target.value; cRender(); };
+  $('#cVista').onchange = e => { C.f.vista = e.target.value; cRender(); };
+  main.querySelectorAll('[data-cvig]').forEach(b => b.onclick = () => { const x = G[b.dataset.cvig]; if (x) cMarcar(x, 'vigente', ''); });
+  main.querySelectorAll('[data-carch]').forEach(b => b.onclick = () => { const x = G[b.dataset.carch]; if (!x) return; const m = main.querySelector(`[data-cmot="${CSS.escape(b.dataset.carch)}"]`); cMarcar(x, 'cerrado', m ? m.value : ''); });
+  main.querySelectorAll('[data-creab]').forEach(b => b.onclick = e => { e.stopPropagation(); const x = G[b.dataset.creab]; if (x) cMarcar(x, 'vigente', 'Reabierto'); });
+  const dp = $('#cPtos'); if (dp) dp.ontoggle = () => { C._abierto = dp.open; };
+  const dr = $('#cRevD'); if (dr) dr.ontoggle = () => { C._revAb = dr.open; };
+  const dl = $('#cLecD'); if (dl) dl.ontoggle = () => { C._lecAb = dl.open; };
+  const per = $('#cPer'); if (per) { per.onclick = e => e.stopPropagation(); per.onchange = e => { C.f.per = e.target.value; C._abierto = true; cRender(); }; }
+  main.querySelectorAll('[data-cpto]').forEach(tr => tr.onclick = () => { C.f.pdv = tr.dataset.cpto; cRender(); document.getElementById('cBuscar').scrollIntoView({block: 'center'}); });
   main.querySelectorAll('tr[data-cid]').forEach(tr => { tr.onclick = e => { if (e.target.closest('[data-cpdf]')) return; cAbrir(tr.dataset.cid); }; tr.onkeydown = e => { if (e.key === 'Enter') cAbrir(tr.dataset.cid); }; });
   main.querySelectorAll('[data-cpdf]').forEach(b => b.onclick = async () => { const r = C.docs[b.dataset.cpdf]; b.disabled = true; b.textContent = '…'; try { await cDescargar(r); } catch (e) { toast('No se pudo hacer el PDF. Revisa la conexión.'); } b.disabled = false; b.textContent = 'PDF'; });
 }
@@ -4010,24 +4098,24 @@ function cRender(){
 /* ---------- formulario ---------- */
 const C_CAMPOS = {
   entrega: [
-    ['g', 'Carta'], ['ciudad', 'Ciudad desde donde se envía', {req: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
+    ['g', 'Carta'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
     ['g', 'Cliente'], ['nombre', 'Nombre del deudor', {req: 1, wide: 1}], ['ciudadCliente', 'Ciudad del deudor', {req: 1}],
     ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor'], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
   ],
   retoma1: [
-    ['g', 'Carta'], ['ciudad', 'Ciudad', {req: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
+    ['g', 'Carta'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
     ['g', 'Cliente'], ['nombre', 'Nombre del deudor', {req: 1, wide: 1}], ['ciudadCliente', 'Ciudad del deudor', {req: 1}],
     ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor'], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
     ['g', 'Retoma'], ['fechaEntrega', 'Fecha en que la moto se entregó a la empresa', {date: 1, req: 1}],
   ],
   retoma2: [
-    ['g', 'Carta'], ['ciudad', 'Ciudad', {req: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
+    ['g', 'Carta'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
     ['g', 'Cliente'], ['nombre', 'Nombre del deudor', {req: 1, wide: 1}], ['cc', 'Cédula del deudor', {req: 1}], ['dsNombre', 'Deudor solidario (si tiene)', {wide: 1}], ['dsCc', 'Cédula del deudor solidario'], ['ciudadCliente', 'Ciudad del deudor', {req: 1}],
     ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor'], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
     ['g', 'Saldo pendiente'], ['saldo', 'Saldo que quedó debiendo después de la retoma', {money: 1, req: 1}],
   ],
   visita: [
-    ['g', 'Visita'], ['ciudad', 'Ciudad', {req: 1}], ['fecha', 'Fecha de la visita', {date: 1, req: 1}], ['hora', 'Hora', {time: 1}],
+    ['g', 'Visita'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la visita', {date: 1, req: 1}], ['hora', 'Hora', {time: 1}],
     ['g', 'Cliente'], ['nombre', 'Nombre del deudor', {req: 1, wide: 1}], ['cc', 'Cédula del deudor', {req: 1}], ['direccion', 'Dirección del deudor', {req: 1, wide: 1}],
     ['dsNombre', 'Deudor solidario (si tiene)', {wide: 1}], ['dsCc', 'Cédula del deudor solidario'],
     ['g', 'Obligación'], ['obligacion', 'N.° de la obligación', {req: 1}], ['placa', 'Placa de la motocicleta', {req: 1}], ['fechaNotif', 'Fecha de la notificación enviada antes', {date: 1}], ['fechaCorte', 'Saldo con corte al', {date: 1, req: 1}],
@@ -4044,6 +4132,8 @@ function cAbrir(id, tipoNuevo){
   const campo = ([k, l, o = {}]) => {
     if (k === 'g') return `</div><h3 class="car-g">${esc(l)}</h3><div class="fgrid">`;
     const v = d[k] ?? '';
+    if (o.pdv) { const ops = cPuntos(); const vv = String(v || '').toUpperCase(); const lst = vv && !ops.some(x => nid(x) === nid(vv)) ? [vv, ...ops] : ops;
+      return `<div class="field"><label for="c_${k}">${esc(l)}${o.req ? ' *' : ''}</label><select id="c_${k}" ${ro ? 'disabled' : ''}><option value="">Escoja…</option>${lst.map(x => `<option ${nid(x) === nid(vv) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>`; }
     return `<div class="field ${o.wide ? 'wide' : ''}"><label for="c_${k}">${esc(l)}${o.req ? ' *' : ''}</label>${o.sel ? `<select id="c_${k}" ${ro ? 'disabled' : ''}>${o.sel.map(x => `<option ${v === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`
       : `<input id="c_${k}" ${o.money ? `class="money-in" inputmode="numeric" placeholder="$" value="${esc(v ? (+v).toLocaleString('es-CO') : '')}"` : o.num ? `inputmode="numeric" value="${esc(v)}"` : `type="${o.date ? 'date' : o.time ? 'time' : 'text'}" value="${esc(v)}"`} ${ro ? 'disabled' : ''}>`}</div>`;
   };
@@ -4055,10 +4145,11 @@ function cAbrir(id, tipoNuevo){
         <label for="cMoto"><b>1. ¿El cliente ya tiene carta guardada?</b> Búscalo y se llenan todos los datos; solo revisa la fecha.</label>
         <input id="cMoto" placeholder="Escribe la placa, la cédula o el nombre del deudor" style="width:100%">
         <div id="cMotoRes" class="car-res"></div>
-        <div class="car-o">o</div>
+${tipo === 'visita' ? `        <p class="small muted" style="margin:8px 0 0">¿Es nuevo? Escriba sus datos abajo. Esta carta no lleva los datos de la moto (solo la placa), por eso aquí no se lee la tarjeta.</p>
+` : `        <div class="car-o">o</div>
         <label for="cTarPlaca"><b>2. ¿Es nuevo?</b> Escribe la placa y sube la foto de la tarjeta de propiedad (licencia de tránsito): se leen los datos solos. Si esa placa ya está en la aplicación, se llenan sin leer la tarjeta. Suba la hoja escaneada con <b>las dos caras</b> (foto, PDF o Word): el reverso sirve después para el levantamiento de prenda. Si no hay tarjeta, sirve el pantallazo o PDF de la consulta del <b>RUNT</b>.</label>
         <div class="nov-actions"><input id="cTarPlaca" placeholder="Placa" maxlength="8" style="width:120px;text-transform:uppercase" aria-label="Placa de la moto"><button type="button" class="btn" id="cTarjeta">Leer tarjeta de propiedad</button><span class="small" id="cTarMsg"></span></div>
-      </div>`}
+`}      </div>`}
       <div class="fgrid">${C_CAMPOS[tipo].map(campo).join('')}</div>
       ${tipo === 'visita' ? '<p class="small" id="cTotal" style="margin:8px 0 0"></p>' : ''}
       <p class="small muted" style="margin:12px 0 0">El PDF sale con el logo y el texto exacto de la carta de la empresa${tipo === 'visita' ? ', con su firma y la constancia de entrega para firmar' : ', con su firma'}.</p>
@@ -4078,7 +4169,9 @@ function cAbrir(id, tipoNuevo){
   if ($('#cDel')) $('#cDel').onclick = async () => { const b = $('#cDel'); if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = '¿Seguro? Toca otra vez'; return; }
     await S.db.doc('cartas/' + r.id).set({...C.docs[r.id], id: undefined, eliminada: {at: new Date().toISOString(), por: actorId()}}); toast('Carta eliminada'); salir(); };
   const mi = $('#cMoto');
-  const pon = (k, v) => { const el = $('#c_' + k); if (!el || v == null || v === '') return; el.value = el.classList.contains('money-in') ? (+v).toLocaleString('es-CO') : (el.type === 'date' || el.type === 'time' || el.tagName === 'SELECT') ? v : String(v).toUpperCase(); };
+  const pon = (k, v) => { const el = $('#c_' + k); if (!el || v == null || v === '') return;
+    if (el.tagName === 'SELECT' && k === 'ciudad') { const V = String(v).toUpperCase().trim(); let op = [...el.options].find(o => nid(o.value) === nid(V)); if (!op) { op = new Option(V, V); el.add(op, 1); } el.value = op.value; return; }
+    el.value = el.classList.contains('money-in') ? (+v).toLocaleString('es-CO') : (el.type === 'date' || el.type === 'time' || el.tagName === 'SELECT') ? v : String(v).toUpperCase(); };
   if (mi) mi.oninput = () => {
     const q_ = nid(mi.value), res = $('#cMotoRes'); if (q_.length < 3) { res.innerHTML = ''; return; }
     // cartas guardadas: la más reciente de cada cliente (por placa o cédula)
@@ -4105,7 +4198,7 @@ function cAbrir(id, tipoNuevo){
     res.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => {
       const m = records().find(x => x.id === b.dataset.cm); if (!m) return;
       pon('nombre', m.deudor); pon('placa', m.placa); pon('marca', m.marca); pon('linea', m.linea); pon('modelo', m.modelo); pon('chasis', m.chasis); pon('motor', m.motor); pon('color', m.color);
-      pon('ciudadCliente', m.pdv); pon('fechaEntrega', m.fechaRecibo);
+      pon('ciudadCliente', m.pdv); pon('ciudad', m.pdv); pon('fechaEntrega', m.fechaRecibo);
       res.innerHTML = `<span class="small">Listo: se llenaron los datos de la moto${tipo === 'retoma1' ? ' (con la fecha de entrega)' : ''}. Revísalos${tipo === 'retoma2' ? ' y escribe el saldo pendiente' : ''}.</span>`; mi.value = '';
     });
   };
