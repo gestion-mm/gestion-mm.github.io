@@ -4190,19 +4190,19 @@ const C_CAMPOS = {
     ['g', 'Saldo pendiente'], ['saldo', 'Saldo que quedó debiendo después de la retoma', {money: 1, req: 1}],
   ],
   visita: [
-    ['g', 'Visita'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la visita', {date: 1, req: 1}], ['hora', 'Hora', {time: 1}],
+    ['g', 'Visita'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha en que se hace la carta (no se imprime: la fecha y la hora de la visita se escriben a mano)', {date: 1, req: 1}],
     ['g', 'Cliente'], ['nombre', 'Nombre del deudor', {req: 1, wide: 1}], ['cc', 'Cédula del deudor', {req: 1}], ['direccion', 'Dirección del deudor', {req: 1, wide: 1}],
     ['dsNombre', 'Deudor solidario (si tiene)', {wide: 1}], ['dsCc', 'Cédula del deudor solidario'],
     ['g', 'Obligación'], ['obligacion', 'N.° de la obligación', {req: 1}], ['placa', 'Placa de la motocicleta', {req: 1}], ['fechaNotif', 'Fecha de la notificación enviada antes', {date: 1}], ['fechaCorte', 'Saldo con corte al', {date: 1, req: 1}],
     ['g', 'Saldo en mora'], ['venc', 'Fecha de vencimiento', {date: 1}], ['cuotas', 'Cuotas vencidas', {num: 1}], ['dias', 'Días de mora', {num: 1}], ['capital', 'Capital vencido', {money: 1, req: 1}], ['intereses', 'Intereses de mora', {money: 1}],
-    ['g', 'Plazo y contacto'], ['plazo', 'Fecha límite para pagar o entregar', {date: 1, req: 1}], ['almacen', 'Dirección del almacén donde puede pagar', {req: 1, wide: 1}], ['tel', 'Teléfono / WhatsApp de contacto', {req: 1}],
+    ['g', 'Plazo y contacto'], ['plazo', 'Fecha límite para pagar o entregar (déjela vacía: se llena a mano)', {date: 1}], ['almacen', 'Dirección del almacén donde puede pagar', {req: 1, wide: 1}], ['tel', 'Teléfono / WhatsApp de contacto', {req: 1}],
   ],
 };
 function cAbrir(id, tipoNuevo){
   cIniciar();
   const r = id ? C.docs[id] : null, tipo = r ? r.tipo : tipoNuevo, ro = !cPuede();
   const hoy = todayISO();
-  const d = r ? {...r.d} : (C_ELE.has(tipo) ? {fecha: hoy, ciudad: cLs('ciudad')} : tipo !== 'visita' ? {fecha: hoy, ciudad: cLs('ciudad'), servicio: 'PARTICULAR'} : {fecha: hoy, fechaCorte: hoy, ciudad: cLs('ciudad'), tel: cLs('tel') || C_CEL, almacen: cDirPunto(cLs('ciudad')) || cLs('almacen'), plazo: masDias(hoy, 3), hora: new Date().toTimeString().slice(0, 5)});
+  const d = r ? {...r.d} : (C_ELE.has(tipo) ? {fecha: hoy, ciudad: cLs('ciudad')} : tipo !== 'visita' ? {fecha: hoy, ciudad: cLs('ciudad'), servicio: 'PARTICULAR'} : {fecha: hoy, fechaCorte: hoy, ciudad: cLs('ciudad'), tel: cLs('tel') || C_CEL, almacen: cDirPunto(cLs('ciudad')) || cLs('almacen')});
   C.edit = {id: r ? r.id : 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), r, tipo};
   const campo = ([k, l, o = {}]) => {
     if (k === 'g') return `</div><h3 class="car-g">${esc(l)}</h3><div class="fgrid">`;
@@ -4614,8 +4614,8 @@ async function cHacerPdf(tipo, d){
     linea(M.l, M.l + 7.5 * cm, y, false); espacio(2);
     parrafo([['Kenny Hoyos', true]], {after: 0}); parrafo([['Líder de Cartera', true]], {after: 0}); parrafo([[C_EMPRESA + ' · NIT ' + C_NIT, false]], {after: 0}); parrafo([['Celular: ' + C_CEL, false]], {after: 0}); parrafo([['Correo electrónico: ' + C_CORREO, false]], {after: 0});
   } else {
-    const [yy, mm, dd] = (d.fecha || '').split('-');
-    parrafo([[`${d.ciudad || ''}, ${+dd || ''} de ${C_MESES[+mm - 1] || ''} de ${yy || ''}`, false], ['     Hora: ', false], [d.hora || '________', false]], {after: T * 0.8});
+    // la fecha y la hora de la visita las escribe el gestor a mano en la carta impresa
+    parrafo([[`${d.ciudad || ''}, ________ de ____________________ de 20______`, false], ['     Hora: ', false], ['______________', false]], {after: T * 0.8});
     parrafo([['Señor(a)', false]], {after: 0});
     parrafo([[`${d.nombre || ''} – C.C. ${d.cc || ''}`, true]], {after: 0});
     if (d.dsNombre) parrafo([[`Deudor solidario: ${d.dsNombre} – C.C. ${d.dsCc || ''}`, true]], {after: 0});
@@ -4629,7 +4629,7 @@ async function cHacerPdf(tipo, d){
            [cFechaCorta(d.venc), d.cuotas != null ? String(d.cuotas) : '', d.dias != null ? String(d.dias) : '', cMil(d.capital), cMil(d.intereses || 0), cMil(tot)]],
           {cols: [0.2, 0.14, 0.14, 0.18, 0.16, 0.18].map(x => x * ancho), head: true, size: 8.5, alto: 22});
     const [, pm, pd] = (d.plazo || '').split('-');
-    parrafo([[`A más tardar el ${+pd || '____'} de ${C_MESES[+pm - 1] || '__________'}`, true], [` debe pagar el valor total en mora o hacer la entrega voluntaria de la motocicleta. Puede pagar en el almacén ubicado en ${d.almacen || ''} o comunicarse al ${d.tel || ''} para coordinar la entrega.`, false]], {align: 'justify', after: T * 0.6});
+    parrafo([[`A más tardar el ${+pd || '________'} de ${C_MESES[+pm - 1] || '____________________'}`, true], [` debe pagar el valor total en mora o hacer la entrega voluntaria de la motocicleta. Puede pagar en el almacén ubicado en ${d.almacen || ''} o comunicarse al ${d.tel || ''} para coordinar la entrega.`, false]], {align: 'justify', after: T * 0.6});
     parrafo([['Vencido ese plazo sin que haya pagado la mora ni entregado la motocicleta, la empresa procederá, de acuerdo con su contrato y la ley, a:', false]], {align: 'justify', after: T * 0.4});
     const items = ['Solicitar ante la autoridad judicial la aprehensión y entrega de la motocicleta, conforme a su contrato de prenda y a la Ley 1676 de 2013. Con esa orden, la motocicleta será inmovilizada por las autoridades en el lugar donde se encuentre, y los gastos del trámite podrán cargarse a su obligación en los términos de su contrato.',
       'Trasladar su obligación a cobro jurídico para exigir judicialmente las sumas vencidas.', 'Reportar el incumplimiento a las centrales de riesgo, previo aviso, según la Ley 1266 de 2008.'];
@@ -4702,7 +4702,7 @@ function cLote(){
     root.innerHTML = `<div class="overlay" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="clT" style="max-width:980px">
       <div class="sheet-head"><h2 id="clT">Varias cartas a la vez</h2><button class="btn" id="clX">Cerrar</button></div>
       <div class="sheet-body">
-        <p class="small muted" style="margin:0 0 10px">Suba las tarjetas escaneadas: <b>un archivo por cliente</b> (la hoja con las dos caras; foto, PDF o Word). Se lee cada una y sale una carta por cliente. Si la placa ya está en la aplicación, se completan los datos guardados. Revise la tabla, llene lo que falte y guarde: se descarga <b>un PDF por cada carta</b>. Si el navegador pregunta si permite descargar varios archivos, toque <b>Permitir</b>.</p>
+        <p class="small muted" style="margin:0 0 10px">Suba las tarjetas escaneadas: <b>un archivo por cliente</b> (la hoja con las dos caras; foto, PDF o Word). <b>Consejo:</b> si el archivo se llama con la placa (ej. <b>GRY01I.pdf</b>) y esa placa ya está guardada, no se paga la lectura. Se lee cada una y sale una carta por cliente. Si la placa ya está en la aplicación, se completan los datos guardados. Revise la tabla, llene lo que falte y guarde: se descarga <b>un PDF por cada carta</b>. Si el navegador pregunta si permite descargar varios archivos, toque <b>Permitir</b>.</p>
         <div class="fgrid">
           <div class="field"><label for="clTipo">Tipo de carta</label><select id="clTipo" ${filas.length ? 'disabled' : ''}>${C_LOTE_TIPOS.map(t => `<option value="${t}" ${t === L.tipo ? 'selected' : ''}>${esc(C_TIPOS[t])}</option>`).join('')}</select></div>
           <div class="field"><label for="clPdv">Punto de venta</label><select id="clPdv"><option value="">Escoja…</option>${cPuntos().map(p => `<option ${nid(p) === nid(L.pdv) ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
@@ -4756,7 +4756,11 @@ async function cLoteLeer(files, pinta){
       try { const h = await crypto.subtle.digest('SHA-256', await f.file.arrayBuffer()); huella = [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join(''); } catch (e) {}
       let dd = null, pagada = false;
       const ya = huella && Object.values(C.lec).find(x => x.huella === huella && x.datos);
+      // si el archivo se llama con la placa (ej. GRY01I.pdf) y esa placa ya está guardada, no se paga lectura
+      const pn = (String(f.nombre).toUpperCase().replace(/[\s._-]+/g, '').match(/[A-Z]{3}\d{2}[A-Z]/) || [])[0] || '';
+      const guard = pn ? cDatosPlaca(nid(pn)) : null, mo = pn && !guard ? records().find(z => nid(z.placa) === nid(pn)) : null;
       if (ya) { dd = {...ya.datos}; f.nota = 'Esta misma hoja ya se había leído: no se pagó otra lectura.'; }
+      else if (guard || mo) { dd = guard ? {...guard.d} : {nombre: mo.deudor, placa: mo.placa, marca: mo.marca, linea: mo.linea, modelo: mo.modelo, chasis: mo.chasis, color: mo.color}; f.nota = `La placa ${pn} ya estaba guardada: se usaron esos datos, no se pagó lectura.`; }
       else {
         if (!lector) throw new Error('sin lector');
         const r = await lector.json('Lee una Licencia de Tránsito (tarjeta de propiedad) de Colombia', {images: await cRecortar([f.file])});
