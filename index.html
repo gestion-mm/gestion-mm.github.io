@@ -1154,6 +1154,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 .rec-bar{display:block;height:10px;border-radius:0 4px 4px 0;background:var(--accent)}
 .chart .bar.sel{fill:var(--red)}
 .tile .n.rojo{color:var(--red)} .tile .n.okc{color:var(--ok)}
+.inf-tabs-w{padding-top:14px;padding-bottom:0}.inf-tabs{display:inline-flex}.ed-in{width:70px;min-height:30px;text-align:right;padding:2px 6px}.ed-tab td .small{font-size:11px}.ed-cuadre.ok{border-left:4px solid var(--ok)}.ed-cuadre.mal{border-left:4px solid var(--red)}.ed-big{font:700 22px var(--display);padding:6px 0}.ed-tab input.ed-in{width:110px}
 .rec-top{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap}
 .rec-ctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
@@ -1208,7 +1209,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
       <button type="button" data-mod="ele"><span>Electro<span class="lg">domésticos</span></span> <span class="badge" id="mn-ele" hidden></span></button>
       <button type="button" data-mod="car">Cartas</button>
       <button type="button" data-mod="lev">Levantamientos<span class="lg"> de prenda</span> <span class="badge" id="mn-lev" hidden></span></button>
-      <button type="button" data-mod="rec" hidden>Recaudo</button>
+      <button type="button" data-mod="rec" hidden>Informes</button>
     </nav>
     <div class="bell-wrap"><button type="button" class="bell" id="mmBell" aria-haspopup="true" aria-expanded="false" aria-label="Avisos" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></svg><span class="bell-n" id="mmBellN" hidden></span></button><div class="bell-panel" id="mmBellPanel" role="dialog" aria-label="Avisos" hidden></div></div><div class="who" id="who"></div><button type="button" class="btn salir" id="cambiarClave" hidden>Cambiar contraseña</button><button type="button" class="btn salir" id="logout" hidden>Salir</button>
   </div></div>
@@ -1355,7 +1356,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 
 
 </div>
-<div id="mod-rec" hidden><main class="wrap" id="rec-main"></main></div>
+<div id="mod-rec" hidden><div class="wrap inf-tabs-w"><div class="seg inf-tabs" id="inf-tabs" role="tablist" aria-label="Informe"><button role="tab" aria-selected="true" data-inf="rec">Recaudo</button><button role="tab" aria-selected="false" data-inf="edad">Cartera por edades</button></div></div><main class="wrap" id="rec-main"></main><main class="wrap" id="edad-main" hidden></main></div>
 <div id="modal-root"></div>
 <script type="text/mm-app">
 (() => {
@@ -6535,6 +6536,381 @@ async function empezar(){
 document.addEventListener('mm:perm', empezar);
 })();
 </script>
+<script type="text/mm-app">
+(() => {
+'use strict';
+/* ---------- Informe de cartera por edades (solo la administradora): Motos, Electro, otras carteras y diferencia con el cierre contable ---------- */
+const q = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = v => (v < 0 ? '−' : '') + '$' + Math.abs(Math.round(+v || 0)).toLocaleString('es-CO');
+const pad = n => String(n).padStart(2, '0');
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MC = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const sum = a => (a || []).reduce((t, x) => t + (+x || 0), 0);
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9%]/g, '');
+const fpor = (v, d = 1) => v == null || !isFinite(v) ? '—' : v.toLocaleString('es-CO', {maximumFractionDigits: d, minimumFractionDigits: d}) + '%';
+const pc = (a, b) => b ? a / b * 100 : null;
+function toast(m){ const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 5000); }
+
+const LINEAS = {motos: 'Motos', electro: 'Electro'};
+// puntos en el mismo orden y con los mismos nombres de hoja que los Excel de Kenny
+const PUNTOS = {
+  motos: [['CAU1','Caucasia'],['TIE','Tierralta'],['PTO','Puerto Libertador'],['AYA','Ayapel'],['CER1','Cereté 1'],['CER2','Cereté 2'],['MAJ','Majagual'],['TRON','La Troncal'],['PLAN','Planeta Rica'],['MBANO','Montelíbano'],['CARG','Cargueros Caucasia'],['SINCE','Sincelejo'],['NIU','NIU Medellín'],['FINAN','Financiera Santa Ana'],['LOR','Lorica'],['EXT','Externa'],['APAR','La Apartada'],['PUENUEVO','Pueblo Nuevo'],['CASAMONT','Motos Casanova Montelíbano'],['CASTANTIO','Castigada Antioquia'],['CASTISUCRE','Castigada Sucre'],['CASTCOR','Castigada Córdoba']],
+  electro: [['TIE','Tierralta'],['CASA PTO','Casanova Puerto Libertador'],['CASA AYA','Casanova Ayapel'],['MAJ','Majagual'],['TRON','La Troncal (Caucasia 2)'],['PLAN','Planeta Rica'],['MBANO','Montelíbano'],['CAU21','La 21 (Caucasia)'],['CASMAJ','Casanova Majagual'],['PUER','Electro Puerto'],['EMPLE','Empleados'],['CASAPART','Casanova La Apartada'],['CASMON','Casanova Montelíbano'],['PUENUE','Pueblo Nuevo']],
+};
+const OTRAS = [['REPUESTOS','Repuestos'],['CARBOMAX','Carbomax'],['CORBETA','Corbeta'],['BRILLA','Brilla'],['EMPRESAS','Empresas'],['TIERRALTA','Tierralta (cartera problema)']];
+// cuenta contable del informe de edades -> línea | hoja
+const CUENTAS = {
+  '130505001':'motos|CAU1','130505002':'motos|TRON','130505003':'motos|TIE','130505004':'motos|PTO','130505005':'motos|AYA','130505006':'motos|CER1','130505007':'motos|CER2','130505009':'motos|MAJ','130505010':'motos|PLAN','130505011':'motos|MBANO',
+  '130505022':'motos|CARG','130505023':'motos|SINCE','130505026':'motos|CASTANTIO','130505028':'motos|CASTISUCRE','130505029':'motos|CASTCOR','130505030':'motos|NIU','130505034':'motos|FINAN','130505035':'motos|EXT','130505037':'motos|LOR','130505043':'motos|APAR','130505044':'motos|PUENUEVO','130505046':'motos|CASAMONT',
+  '130505013':'electro|CASA AYA','130505014':'electro|MAJ','130505016':'electro|TIE','130505017':'electro|CASA PTO','130505018':'electro|PLAN','130505019':'electro|TRON','130505020':'electro|MBANO','130505031':'electro|CAU21','130505032':'electro|CASMAJ','130505033':'electro|PUER','130505038':'electro|EMPLE','130505040':'electro|CASAPART','130505042':'electro|CASMON','130505045':'electro|PUENUE',
+  '130510003':'otras|BRILLA','130505041':'otras|EMPRESAS','130510004':'otras|TIERRALTA',
+};
+const ED = ['xv','d30','d60','d90','m90'], EDN = {xv: 'X vencer', d30: '1 a 30', d60: '31 a 60', d90: '61 a 90', m90: '(+) 90'};
+const vacia = () => ({n: 0, xv: 0, d30: 0, d60: 0, d90: 0, m90: 0});
+const tot = r => r ? sum(ED.map(k => r[k])) : 0;
+const atr = r => r ? (+r.d30 || 0) + (+r.d60 || 0) + (+r.d90 || 0) + (+r.m90 || 0) : 0;
+const suma = rs => { const o = vacia(); for (const r of rs) if (r) { o.n += +r.n || 0; for (const k of ED) o[k] += +r[k] || 0; } return o; };
+
+let DB = null, DL = null, listo = false, empezado = false;
+let CFG = {cuentas: {}, nombres: {motos: {}, electro: {}, otras: {}}};
+let MESD = {}, SEL = null, VISTA = 'motos', CARGA = null;
+const cuentaDe = cu => CFG.cuentas[cu] || CUENTAS[cu] || (CARGA && CARGA.asign[cu]) || null;
+const puntosDe = (l, d) => { const base = (l === 'otras' ? OTRAS : PUNTOS[l]).map(x => x[0]); const en = d && d[l] ? Object.keys(d[l]) : []; return [...base, ...en.filter(c => !base.includes(c)).sort()]; };
+const nombreDe = (l, c) => ((CFG.nombres || {})[l] || {})[c] || ((l === 'otras' ? OTRAS : PUNTOS[l] || []).find(x => x[0] === c) || [])[1] || c;
+const meses = () => Object.keys(MESD).sort();
+const anterior = k => { const ks = meses(), i = ks.indexOf(k); return i > 0 ? MESD[ks[i - 1]] : null; };
+const etqMes = k => { if (!k) return ''; const [y, m] = k.split('-').map(Number); return `${MESES[m - 1]} ${y}`; };
+
+/* ---------- lectura de archivos ---------- */
+async function hojas(file){
+  if (typeof XLSX === 'undefined') throw new Error('xlsx');
+  const wb = XLSX.read(await file.arrayBuffer(), {type: 'array', cellDates: true});
+  return wb.SheetNames.map(n => ({n, filas: XLSX.utils.sheet_to_json(wb.Sheets[n], {header: 1, raw: true, defval: null})}));
+}
+const HOYK = (() => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; })();
+const MN = {ENE:1,JAN:1,FEB:2,MAR:3,ABR:4,APR:4,MAY:5,JUN:6,JUL:7,AGO:8,AUG:8,SEP:9,OCT:10,NOV:11,DIC:12,DEC:12};
+// "Sep-30-26", "Agos-31-25", "agost-30-014", fecha de Excel o Date -> 'YYYY-MM'
+function mesDe(v){
+  if (v instanceof Date && !isNaN(v)) { const d = new Date(v.getTime() + 12 * 3600e3); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
+  if (typeof v === 'number' && v > 20000 && v < 80000) { const d = new Date(Date.UTC(1899, 11, 30) + v * 864e5); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`; }
+  const s = String(v ?? '').trim().toUpperCase(); let m;
+  if ((m = s.match(/^([A-Z]{3})[A-Z.]*[\s/-]+\d{1,2}[\s/-]+(\d{2,4})$/)) && MN[m[1]]) { let y = +m[2]; y = y < 100 ? 2000 + y : y < 1000 ? 2000 + (y % 100) : y; return `${y}-${pad(MN[m[1]])}`; }
+  if ((m = s.match(/^(\d{4})-(\d{1,2})/))) return `${m[1]}-${pad(m[2])}`;
+  if ((m = s.match(/^\d{1,2}[/.-](\d{1,2})[/.-](\d{2,4})$/))) return `${m[2].length === 2 ? '20' + m[2] : m[2]}-${pad(m[1])}`;
+  return null;
+}
+const numero = v => { if (typeof v === 'number') return v; const s = String(v ?? '').replace(/[$\s]/g, ''); if (!s || s === '-') return 0; const x = parseFloat(s.includes(',') && !s.includes('.') ? s.replace(',', '.') : s.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return isNaN(x) ? 0 : x; };
+
+// informe de edades del sistema (RPT_CARTERA_EDADES_CORTE)
+async function leerSistema(file){
+  for (const h of await hojas(file)) {
+    let ci = -1, H = null;
+    for (let i = 0; i < Math.min(h.filas.length, 30); i++) { const r = (h.filas[i] || []).map(norm); if (r.includes('CUENTA') && r.includes('TCARTERA')) { ci = i; H = r; break; } }
+    if (ci < 0) continue;
+    const col = k => H.indexOf(k), iF = col('FECHADECORTE'), iC = col('CUENTA'), iNm = col('NOMBREDECUENTA'), iN = H.findIndex(x => /CLIENTE/.test(x)),
+      iT = col('TCARTERA'), iX = col('XVENCER'), i1 = col('1A30'), i2 = col('31A60'), i3 = col('61A90'), i4 = H.findIndex(x => x === '90' || x === 'MAS90'), iE = col('ENCARGADO');
+    const filas = []; let mes = null;
+    for (const f of h.filas.slice(ci + 1)) {
+      if (!f) continue; const cu = String(f[iC] ?? '').replace(/\D/g, ''); if (!cu) continue;
+      if (!mes && iF >= 0) mes = mesDe(f[iF]);
+      filas.push({cu, nom: iNm >= 0 ? String(f[iNm] ?? '').trim() : '', n: iN >= 0 ? Math.round(numero(f[iN])) : 0, t: numero(f[iT]), xv: Math.round(numero(f[iX])), d30: Math.round(numero(f[i1])), d60: Math.round(numero(f[i2])), d90: Math.round(numero(f[i3])), m90: Math.round(numero(f[i4])), enc: iE >= 0 ? String(f[iE] ?? '').trim() : ''});
+    }
+    if (filas.length) return {tipo: 'sistema', nombre: file.name, filas, mes, asign: {}};
+  }
+  throw new Error('formato-sistema');
+}
+// los Excel de Kenny (INFORME CARTERA MOTOS / ELECTRO): una hoja por punto con una fila por mes
+const NO_PUNTO = new Set(['GENERAL','COMISION','ASESORES','HOJA1','HOJA2','HOJA3','NEC','TAR','CARREPUES']);
+async function leerHistorico(files){
+  const out = {tipo: 'historico', nombre: files.map(f => f.name).join(' y '), lineas: {motos: {}, electro: {}}, otras: null, otrasMes: null, avisos: []};
+  for (const file of files) {
+    const nf = norm(file.name), l = nf.includes('ELECTRO') ? 'electro' : nf.includes('MOTO') ? 'motos' : null;
+    if (!l) { out.avisos.push(`No supe si ${file.name} es de Motos o de Electro (el nombre debe decir MOTOS o ELECTRO).`); continue; }
+    for (const h of await hojas(file)) {
+      const code = h.n.trim().toUpperCase();
+      if (code === 'GENERAL') {
+        const i = h.filas.findIndex(r => r && /^LA DIFERENCIA/i.test(String(r[0] ?? '').trim()));
+        if (i >= 0) { const o = {}; for (const r of h.filas.slice(i + 1)) { const a = String((r && r[0]) ?? '').trim(); if (!a || /^TOTAL/i.test(a)) break; const k = norm(a); o[k] = {n: Math.round(numero(r[1])), xv: Math.round(numero(r[4])), d30: Math.round(numero(r[6])), d60: Math.round(numero(r[8])), d90: Math.round(numero(r[10])), m90: Math.round(numero(r[12]))}; } if (Object.keys(o).length) out.otras = o; }
+        continue;
+      }
+      if (NO_PUNTO.has(norm(code))) continue;
+      const pts = out.lineas[l][code] = {};
+      // cada fila es un mes; si una fecha quedó mal escrita (año equivocado, mes repetido, fecha futura) se corrige con las filas vecinas
+      const sig = k => { const [y, m] = k.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`; };
+      const lista = h.filas.slice(1).filter(r => r && mesDe(r[0])).map(r => ({r, k: mesDe(r[0]), lab: String(r[0]).trim().toUpperCase()}));
+      for (let i = 1; i < lista.length; i++) {
+        const a = lista[i - 1], x = lista[i], b = lista[i + 1], esp = sig(a.k);
+        let ok = null;
+        if (x.k !== esp && x.k !== a.k && b && b.k === sig(esp)) ok = esp;            // entre dos meses que lo encierran
+        else if (x.k > HOYK || x.k < a.k || (x.k === a.k && x.lab === a.lab)) ok = esp; // futuro, hacia atrás o repetido igualito
+        if (ok && ok !== x.k) { out.avisos.push(`${LINEAS[l]} · hoja ${h.n}: la fila "${String(x.r[0]).trim()}" se tomó como ${etqMes(ok).toLowerCase()}.`); x.k = ok; }
+      }
+      const HD = (h.filas[0] || []).map(norm), iEnc = HD.findIndex(x => x.startsWith('ENCARGADO')), iRet = HD.findIndex(x => /RETENID|ELECTRORET/.test(x)), iEmb = HD.findIndex(x => /EMBARGO/.test(x));
+      for (const {r, k} of lista) {
+        const row = {n: Math.round(numero(r[1])), xv: Math.round(numero(r[4])), d30: Math.round(numero(r[6])), d60: Math.round(numero(r[8])), d90: Math.round(numero(r[10])), m90: Math.round(numero(r[12]))};
+        if (!tot(row) && !row.n) continue;
+        const enc = iEnc >= 0 ? String(r[iEnc] ?? '').trim() : ''; if (enc && isNaN(+enc)) row.enc = enc;
+        if (iRet >= 0 && typeof r[iRet] === 'number') row.ret = r[iRet];
+        if (iEmb >= 0 && typeof r[iEmb] === 'number') row.emb = r[iEmb];
+        pts[k] = row;
+      }
+      if (!Object.keys(pts).length) delete out.lineas[l][code];
+    }
+  }
+  const ks = [...new Set(Object.values(out.lineas).flatMap(L => Object.values(L).flatMap(p => Object.keys(p))))].sort();
+  if (!ks.length) throw new Error('formato-historico');
+  out.desde = ks[0]; out.hasta = ks[ks.length - 1]; out.otrasMes = out.hasta;
+  return out;
+}
+
+/* ---------- preparar lo que se va a guardar ---------- */
+function prepararSistema(c){
+  const res = {motos: {}, electro: {}, otras: {}}, desconocidas = [];
+  for (const f of c.filas) {
+    const a = cuentaDe(f.cu); if (!a) { desconocidas.push(f); continue; }
+    if (a === '_no') continue;
+    const [l, p] = a.split('|'), r = res[l][p] = res[l][p] || {...vacia(), enc: ''};
+    r.n += f.n; for (const k of ED) r[k] += f[k]; if (f.enc && !/sin asignar/i.test(f.enc)) r.enc = f.enc;
+  }
+  return {res, desconocidas};
+}
+
+/* ---------- pantalla ---------- */
+function opcionesCuenta(sel){
+  return `<option value="">— Escoja —</option><option value="_no" ${sel === '_no' ? 'selected' : ''}>No contar</option>` +
+    ['motos', 'electro', 'otras'].map(l => `<optgroup label="${l === 'otras' ? 'Otras carteras (diferencia contable)' : LINEAS[l]}">${puntosDe(l).map(c => `<option value="${l}|${esc(c)}" ${sel === l + '|' + c ? 'selected' : ''}>${esc(nombreDe(l, c))}</option>`).join('')}</optgroup>`).join('');
+}
+function vCarga(){
+  const c = CARGA;
+  if (c.tipo === 'sistema') {
+    const P = prepararSistema(c), t = l => suma(Object.values(P.res[l]));
+    const opMes = []; const base = c.mes ? c.mes.split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth() + 1];
+    for (let k = -2; k <= 1; k++) { const d = new Date(base[0], base[1] - 1 + k, 1); opMes.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }
+    return `<div class="panel rec-carga"><div class="nov-head"><strong>${esc(c.nombre)}</strong><span class="small muted">Informe de cartera por edades del sistema · ${c.filas.length} cuentas</span></div>
+      ${P.desconocidas.length ? `<div class="rec-aviso"><b>${P.desconocidas.length === 1 ? 'Hay una cuenta' : 'Hay ' + P.desconocidas.length + ' cuentas'} que la aplicación no sabe dónde poner.</b> Escoja una vez a qué punto pertenece y desde ahí la recuerda.
+        <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Cuenta</th><th>Nombre</th><th class="num">Cartera</th><th>Va en</th></tr></thead><tbody>
+        ${P.desconocidas.map(f => `<tr><td class="mono">${esc(f.cu)}</td><td class="small">${esc(f.nom)}</td><td class="num">${money(f.t)}</td><td><select data-easign="${esc(f.cu)}" aria-label="Dónde va la cuenta ${esc(f.cu)}">${opcionesCuenta(c.asign[f.cu])}</select></td></tr>`).join('')}
+        </tbody></table></div></div>` : ''}
+      <div class="field" style="max-width:300px;margin-top:8px"><label for="ed-cmes">Mes del cierre</label><select id="ed-cmes">${[...new Set(opMes)].map(k => `<option value="${k}" ${k === c.mes ? 'selected' : ''}>${etqMes(k)}</option>`).join('')}</select></div>
+      <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th></th><th class="num">Clientes</th><th class="num">Cartera</th><th class="num">Total atrasado</th><th class="num">Puntos</th></tr></thead><tbody>
+        ${['motos', 'electro', 'otras'].map(l => { const s = t(l); return `<tr><td>${l === 'otras' ? 'Otras carteras' : LINEAS[l]}</td><td class="num">${s.n.toLocaleString('es-CO')}</td><td class="num">${money(tot(s))}</td><td class="num">${money(atr(s))}</td><td class="num">${Object.keys(P.res[l]).length}</td></tr>`; }).join('')}
+      </tbody></table></div>
+      ${MESD[c.mes] && MESD[c.mes].fuente === 'sistema' ? `<p class="small rojo" style="margin:6px 0 0">Ya había un informe de edades de ${etqMes(c.mes).toLowerCase()}: se reemplazan las cifras (se conservan las motos retenidas, embargos, otras carteras y el cierre contable que haya escrito).</p>` : ''}
+      <div class="nov-actions" style="margin-top:10px"><button class="btn primary" id="ed-guardar" ${P.desconocidas.some(f => !c.asign[f.cu]) ? 'disabled' : ''}>Guardar cartera de ${etqMes(c.mes).toLowerCase()}</button><button class="btn" id="ed-cancelar">Cancelar</button></div></div>`;
+  }
+  const np = l => Object.keys(c.lineas[l]).length;
+  return `<div class="panel rec-carga"><div class="nov-head"><strong>${esc(c.nombre)}</strong><span class="small muted">Sus informes de cartera en Excel · ${etqMes(c.desde)} a ${etqMes(c.hasta)}</span></div>
+    <p class="small" style="margin:6px 0 0">Motos: ${np('motos')} puntos · Electro: ${np('electro')} puntos${c.otras ? ` · otras carteras de ${etqMes(c.otrasMes).toLowerCase()}` : ''}.</p>
+    ${c.avisos.length ? `<p class="small rojo" style="margin:6px 0 0">${c.avisos.map(esc).join('<br>')}</p>` : ''}
+    <p class="small muted" style="margin:6px 0 0">Se guardan todos los meses que traen los archivos. Los meses que ya se subieron desde el informe del sistema no se tocan.</p>
+    <div class="nov-actions" style="margin-top:10px"><button class="btn primary" id="ed-guardar">Importar histórico</button><button class="btn" id="ed-cancelar">Cancelar</button></div></div>`;
+}
+function filaPunto(l, c, r, prev, k, edit){
+  if (!r) return '';
+  const t = tot(r), a = atr(r), pa = prev ? atr(prev) : null, bs = pa == null ? null : pa - a;
+  const inp = (f, v) => edit ? `<input class="ed-in" inputmode="numeric" data-ef="${f}" data-el="${l}" data-ep="${esc(c)}" value="${v ?? ''}" aria-label="${f === 'ret' ? 'Motos retenidas' : 'Motos en embargo'} ${esc(nombreDe(l, c))}">` : (v ?? '');
+  return `<tr><td><b>${esc(nombreDe(l, c))}</b>${r.enc ? `<div class="small muted">${esc(r.enc)}</div>` : ''}</td><td class="num">${(+r.n || 0).toLocaleString('es-CO')}</td><td class="num"><b>${money(t)}</b></td>
+    ${ED.map(e => `<td class="num">${r[e] ? money(r[e]) : '<span class="muted">—</span>'}<div class="small muted">${fpor(pc(r[e], t))}</div></td>`).join('')}
+    <td class="num ${a ? 'rojo' : ''}"><b>${money(a)}</b><div class="small">${fpor(pc(a, t))}</div></td>
+    <td class="num">${inp('ret', r.ret)}</td>${l === 'motos' ? `<td class="num">${inp('emb', r.emb)}</td>` : ''}
+    <td class="num ${bs == null ? '' : bs >= 0 ? 'okc' : 'rojo'}">${bs == null ? '—' : (bs >= 0 ? '▼ ' : '▲ ') + money(Math.abs(bs))}</td></tr>`;
+}
+function vLinea(l, d){
+  const prev = anterior(SEL), cods = puntosDe(l, d).filter(c => d[l] && d[l][c]);
+  const T = suma(cods.map(c => d[l][c])), tt = tot(T), at = atr(T), TP = prev && prev[l] ? suma(Object.values(prev[l])) : null, bs = TP ? atr(TP) - at : null;
+  const ret = sum(cods.map(c => d[l][c].ret)), emb = sum(cods.map(c => d[l][c].emb));
+  const hist = meses().filter(k => MESD[k][l]).slice(-13).map(k => { const s = suma(Object.values(MESD[k][l])); return {k, t: tot(s), a: atr(s), m90: s.m90, n: s.n}; });
+  return `<div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="n">${money(tt)}</div><div class="l">Cartera ${LINEAS[l]} · ${etqMes(SEL)}</div><div class="small muted">${T.n.toLocaleString('es-CO')} clientes</div></div>
+      <div class="tile"><div class="n rojo">${money(at)}</div><div class="l">Total atrasado · ${fpor(pc(at, tt))}</div></div>
+      <div class="tile"><div class="n">${money(T.m90)}</div><div class="l">Más de 90 días · ${fpor(pc(T.m90, tt))}</div></div>
+      <div class="tile"><div class="n ${bs == null ? '' : bs >= 0 ? 'okc' : 'rojo'}">${bs == null ? '—' : (bs >= 0 ? 'Bajó ' : 'Subió ') + money(Math.abs(bs))}</div><div class="l">El atrasado frente al mes anterior</div></div>
+    </div>
+    <div class="tbl-wrap" style="margin-top:12px"><table class="rec-tab ed-tab"><thead><tr><th>Punto · encargado</th><th class="num">Clientes</th><th class="num">T. cartera</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total atrasado</th><th class="num">${l === 'motos' ? 'Motos retenidas' : 'Retenidos'}</th>${l === 'motos' ? '<th class="num">Motos embargo</th>' : ''}<th class="num">Bajó o subió</th></tr></thead>
+      <tbody>${cods.map(c => filaPunto(l, c, d[l][c], prev && prev[l] ? prev[l][c] : null, SEL, !!DB)).join('') || `<tr><td colspan="12" class="empty">No hay cartera de ${LINEAS[l]} en ${etqMes(SEL).toLowerCase()}.</td></tr>`}</tbody>
+      <tfoot><tr><td>Total ${LINEAS[l]}</td><td class="num">${T.n.toLocaleString('es-CO')}</td><td class="num">${money(tt)}</td>${ED.map(e => `<td class="num">${money(T[e])}<div class="small">${fpor(pc(T[e], tt))}</div></td>`).join('')}<td class="num">${money(at)}<div class="small">${fpor(pc(at, tt))}</div></td><td class="num">${ret || ''}</td>${l === 'motos' ? `<td class="num">${emb || ''}</td>` : ''}<td class="num">${bs == null ? '—' : (bs >= 0 ? '▼ ' : '▲ ') + money(Math.abs(bs))}</td></tr></tfoot></table></div>
+    <p class="small muted" style="margin:6px 0 0">"Bajó o subió" compara el total atrasado con el mes anterior: ▼ en verde es que bajó (bien), ▲ en rojo es que subió. ${DB ? 'Las motos retenidas y en embargo se escriben en la tabla y se guardan solas.' : ''}</p>
+    <div class="panel chart" style="margin-top:14px"><h3>% de cartera atrasada · últimos ${hist.length} meses</h3>${grafico(hist)}</div>
+    <details class="hist-box" style="margin-top:12px"><summary class="btn">Ver el histórico de ${LINEAS[l]} mes a mes</summary>
+      <div class="tbl-wrap" style="margin-top:8px"><table class="rec-tab"><thead><tr><th>Mes</th><th class="num">Clientes</th><th class="num">T. cartera</th><th class="num">X vencer</th><th class="num">Total atrasado</th><th class="num">%</th><th class="num">(+) 90</th><th class="num">Bajó o subió</th></tr></thead><tbody>
+      ${meses().filter(k => MESD[k][l]).reverse().map((k, i, arr) => { const s = suma(Object.values(MESD[k][l])), p = arr[i + 1] ? suma(Object.values(MESD[arr[i + 1]][l])) : null, b = p ? atr(p) - atr(s) : null;
+        return `<tr${k === SEL ? ' class="car-yo"' : ''}><td>${MC[+k.slice(5) - 1]} ${k.slice(0, 4)}</td><td class="num">${s.n.toLocaleString('es-CO')}</td><td class="num">${money(tot(s))}</td><td class="num">${money(s.xv)}</td><td class="num">${money(atr(s))}</td><td class="num">${fpor(pc(atr(s), tot(s)))}</td><td class="num">${money(s.m90)}</td><td class="num ${b == null ? '' : b >= 0 ? 'okc' : 'rojo'}">${b == null ? '—' : (b >= 0 ? '▼ ' : '▲ ') + money(Math.abs(b))}</td></tr>`; }).join('')}
+      </tbody></table></div></details>`;
+}
+function grafico(h){
+  if (h.length < 2) return '<p class="small muted">Se necesita más de un mes para la gráfica.</p>';
+  const W = 1000, H = 220, pl = 10, pb = 30, pt = 22, max = Math.max(1, ...h.map(x => pc(x.a, x.t) || 0)) * 1.15, bw = (W - pl * 2) / h.length;
+  const ys = v => pt + (H - pt - pb) * (1 - v / max);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Porcentaje de cartera atrasada por mes"><line class="grid" x1="${pl}" x2="${W - pl}" y1="${H - pb}" y2="${H - pb}"/>
+    ${h.map((x, i) => { const v = pc(x.a, x.t) || 0, x0 = pl + i * bw, w = Math.min(bw * .55, 40), xa = x0 + (bw - w) / 2;
+      return `<g><rect class="bar ${x.k === SEL ? 'sel' : ''}" x="${xa}" y="${ys(v)}" width="${w}" height="${Math.max(0, H - pb - ys(v))}" rx="3"><title>${etqMes(x.k)}: ${fpor(v)} atrasado (${money(x.a)} de ${money(x.t)})</title></rect>
+        <text x="${x0 + bw / 2}" y="${H - 12}" text-anchor="middle">${MC[+x.k.slice(5) - 1]} ${x.k.slice(2, 4)}</text><text x="${x0 + bw / 2}" y="${ys(v) - 5}" text-anchor="middle" class="tiny">${fpor(v)}</text></g>`; }).join('')}</svg>`;
+}
+function vTotal(d){
+  const M = suma(Object.values(d.motos || {})), E = suma(Object.values(d.electro || {})), O = suma(puntosDe('otras', d).map(c => (d.otras || {})[c]).filter(Boolean)), T = suma([M, E, O]), tt = tot(T);
+  const fila = (n, r, cls = '') => `<tr class="${cls}"><td>${n}</td><td class="num">${r.n.toLocaleString('es-CO')}</td><td class="num"><b>${money(tot(r))}</b><div class="small">${fpor(pc(tot(r), tt))}</div></td>${ED.map(e => `<td class="num">${money(r[e])}<div class="small muted">${fpor(pc(r[e], tot(r)))}</div></td>`).join('')}<td class="num rojo">${money(atr(r))}<div class="small">${fpor(pc(atr(r), tot(r)))}</div></td></tr>`;
+  const ed = !!DB, oc = puntosDe('otras', d);
+  const inpO = (c, f, v) => ed ? `<input class="ed-in" inputmode="numeric" data-eo="${esc(c)}" data-ef="${f}" value="${v ? (f === 'n' ? v : Math.round(v).toLocaleString('es-CO')) : ''}" aria-label="${esc(nombreDe('otras', c))} ${f}">` : money(v);
+  const cont = +d.contable || 0, dif = cont ? cont - tt : null;
+  return `<div class="panel" style="margin-top:12px"><h3 style="margin:0 0 8px">Total cartera · ${etqMes(SEL)}</h3>
+    <div class="tbl-wrap"><table class="rec-tab ed-tab"><thead><tr><th></th><th class="num">Clientes</th><th class="num">T. cartera</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total atrasado</th></tr></thead>
+    <tbody>${fila('Motos', M)}${fila('Electro', E)}${fila('Otras carteras (abajo)', O)}</tbody><tfoot>${fila('TOTAL CARTERA', T)}</tfoot></table></div></div>
+    <div class="panel" style="margin-top:12px"><h3 style="margin:0 0 4px">La diferencia de cartera con el informe contable es:</h3>
+    <p class="small muted" style="margin:0 0 8px">Carteras que no se cobran desde cartera pero que el contador sí suma. Brilla, Empresas y Tierralta salen solas del informe del sistema; Repuestos, Carbomax y Corbeta se escriben aquí y se copian solas al mes siguiente.</p>
+    <div class="tbl-wrap"><table class="rec-tab ed-tab"><thead><tr><th>Cartera</th><th class="num">Clientes</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>
+      ${oc.map(c => { const r = (d.otras || {})[c] || vacia(); return `<tr><td><b>${esc(nombreDe('otras', c))}</b></td><td class="num">${inpO(c, 'n', r.n)}</td>${ED.map(e => `<td class="num">${inpO(c, e, r[e])}</td>`).join('')}<td class="num"><b>${money(tot(r))}</b></td></tr>`; }).join('')}
+    </tbody><tfoot><tr><td>TOTAL</td><td class="num">${O.n}</td>${ED.map(e => `<td class="num">${money(O[e])}</td>`).join('')}<td class="num">${money(tot(O))}</td></tr></tfoot></table></div></div>
+    <div class="panel ed-cuadre ${dif == null ? '' : Math.abs(dif) < 1 ? 'ok' : 'mal'}" style="margin-top:12px">
+      <div class="fgrid"><div class="field"><label for="ed-cont">Cartera total según el cierre contable (lo que envía el contador)</label><input id="ed-cont" class="money-in" inputmode="numeric" value="${cont ? Math.round(cont).toLocaleString('es-CO') : ''}" ${ed ? '' : 'disabled'}></div>
+      <div class="field"><label>Total de su informe</label><div class="ed-big">${money(tt)}</div></div></div>
+      <p style="margin:8px 0 0">${dif == null ? '<span class="muted">Escriba el total del cierre contable para comprobar que cuadra.</span>' : Math.abs(dif) < 1 ? '<b class="okc">✓ Cuadra con el cierre contable.</b>' : `<b class="rojo">No cuadra: hay una diferencia de ${money(Math.abs(dif))}</b> (${dif > 0 ? 'el contador tiene más cartera que su informe; falta sumar alguna cartera' : 'su informe tiene más cartera que el cierre contable'}).`}</p></div>`;
+}
+function render(){
+  const root = q('#edad-main'); if (!root) return;
+  if (!listo) { root.innerHTML = '<p class="empty">Cargando cartera…</p>'; return; }
+  const ks = meses(); if (!SEL || !MESD[SEL]) SEL = ks[ks.length - 1] || null;
+  const d = SEL ? MESD[SEL] : null;
+  root.innerHTML = `<div class="rec-top"><div><h2>Cartera por edades</h2><p class="sub">Su informe mensual de cartera de Motos y Electro por punto, con la diferencia frente al cierre contable. Solo usted lo ve.</p></div>
+      <div class="rec-ctrl"><div class="seg" role="tablist" aria-label="Vista">${[['motos', 'Motos'], ['electro', 'Electro'], ['total', 'Total y diferencia']].map(([k, n]) => `<button role="tab" aria-selected="${k === VISTA}" data-ev="${k}">${n}</button>`).join('')}</div>
+      ${ks.length ? `<select id="ed-mes" aria-label="Mes">${ks.slice().reverse().map(k => `<option value="${k}" ${k === SEL ? 'selected' : ''}>${etqMes(k)}</option>`).join('')}</select>` : ''}</div></div>
+    ${DB ? `<div class="rec-acc"><label class="btn primary" for="ed-f-sis">Subir informe de edades del sistema</label><input type="file" id="ed-f-sis" accept=".xlsx,.xls,.csv" hidden>
+      ${d ? '<button class="btn" id="ed-xls">Descargar Excel</button>' : ''}
+      <label class="btn" for="ed-f-hist">${ks.length ? 'Importar mis Excel de cartera' : 'Importar mis Excel de cartera (histórico)'}</label><input type="file" id="ed-f-hist" accept=".xlsx" multiple hidden></div>` : '<div class="banner">Abra la aplicación desde el portal para subir y guardar la cartera.</div>'}
+    ${CARGA ? vCarga() : ''}
+    ${!d ? `<p class="empty" style="margin-top:14px">Todavía no hay cartera guardada. Suba el informe de edades del sistema (RPT_CARTERA_EDADES_CORTE) del cierre del mes, o importe sus Excel de INFORME CARTERA MOTOS y ELECTRO para traer todo el histórico.</p>` :
+      `${d.fuente === 'sistema' ? `<p class="small muted" style="margin:10px 0 0">Corte de ${etqMes(SEL).toLowerCase()} · tomado de ${esc(d.archivo || 'el informe del sistema')}</p>` : `<p class="small muted" style="margin:10px 0 0">${etqMes(SEL)} · tomado de sus Excel de cartera</p>`}
+      ${VISTA === 'total' ? vTotal(d) : vLinea(VISTA, d)}`}`;
+  bind();
+}
+function bind(){
+  const root = q('#edad-main');
+  root.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => { VISTA = b.dataset.ev; render(); });
+  const sm = q('#ed-mes'); if (sm) sm.onchange = () => { SEL = sm.value; render(); };
+  const abrir = (id, fn, multi) => { const f = q(id); if (f) f.onchange = async () => { const files = [...f.files]; f.value = ''; if (!files.length) return;
+    try { CARGA = await fn(multi ? files : files[0]); } catch (e) { toast({'formato-sistema': 'Ese archivo no parece el informe de cartera por edades del sistema: no tiene las columnas CUENTA y T. CARTERA.', 'formato-historico': 'No encontré meses en esos archivos. Deben ser sus Excel INFORME CARTERA MOTOS y ELECTRO.', xlsx: 'No se pudo cargar el lector de Excel. Recargue la página.'}[e.message] || 'No se pudo leer el archivo.'); }
+    render(); const p = q('#edad-main .rec-carga'); if (p) p.scrollIntoView({block: 'start', behavior: 'smooth'}); }; };
+  abrir('#ed-f-sis', leerSistema); abrir('#ed-f-hist', leerHistorico, true);
+  const xb = q('#ed-xls'); if (xb) xb.onclick = descargar;
+  // motos retenidas / embargo por punto
+  root.querySelectorAll('[data-ep]').forEach(inp => inp.onchange = async () => {
+    const l = inp.dataset.el, c = inp.dataset.ep, f = inp.dataset.ef, v = inp.value.trim() === '' ? null : Math.round(+inp.value.replace(/\D/g, '')) || 0;
+    const d = JSON.parse(JSON.stringify(MESD[SEL])); if (!d[l] || !d[l][c]) return; if (v == null) delete d[l][c][f]; else d[l][c][f] = v;
+    try { await guardarMes(SEL, d); toast('Guardado'); render(); } catch (e) { toast('No se pudo guardar.'); } });
+  // otras carteras
+  root.querySelectorAll('[data-eo]').forEach(inp => inp.onchange = async () => {
+    const c = inp.dataset.eo, f = inp.dataset.ef, v = Math.round(+inp.value.replace(/[^\d-]/g, '')) || 0;
+    const d = JSON.parse(JSON.stringify(MESD[SEL])); d.otras = d.otras || {}; d.otras[c] = d.otras[c] || vacia(); d.otras[c][f] = v;
+    try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } });
+  const ct = q('#ed-cont'); if (ct) ct.onchange = async () => { const d = JSON.parse(JSON.stringify(MESD[SEL])); d.contable = Math.round(+ct.value.replace(/\D/g, '')) || 0;
+    try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } };
+  if (!CARGA) return;
+  q('#ed-cancelar').onclick = () => { CARGA = null; render(); };
+  q('#ed-guardar').onclick = guardar;
+  root.querySelectorAll('[data-easign]').forEach(s => s.onchange = () => { if (s.value) CARGA.asign[s.dataset.easign] = s.value; else delete CARGA.asign[s.dataset.easign]; render(); });
+  const cm = q('#ed-cmes'); if (cm) cm.onchange = () => { CARGA.mes = cm.value; render(); };
+}
+const col = () => DB.collection('recaudo');
+async function guardarMes(k, d){ d.mes = k; d.tipo = 'edades'; d.actualizado = new Date().toISOString(); await col().doc('edades-' + k).set(d); MESD[k] = d; }
+async function guardar(){
+  const b = q('#ed-guardar'); b.disabled = true; b.textContent = 'Guardando…';
+  try {
+    if (CARGA.tipo === 'sistema') {
+      const nuevas = Object.entries(CARGA.asign); if (nuevas.length) { CFG = {...CFG, cuentas: {...CFG.cuentas, ...Object.fromEntries(nuevas)}}; await col().doc('_edades_cfg').set(CFG); }
+      const P = prepararSistema(CARGA), k = CARGA.mes, viejo = MESD[k] || {}, prev = anterior(k) || (meses().length ? MESD[meses()[meses().length - 1]] : null);
+      // se conservan retenidas/embargo escritas; si el mes es nuevo se copian del mes anterior
+      for (const l of ['motos', 'electro']) for (const [c, r] of Object.entries(P.res[l])) { const o = (viejo[l] || {})[c] || (prev && prev[l] ? prev[l][c] : null); if (o) { if (o.ret != null) r.ret = o.ret; if (l === 'motos' && o.emb != null) r.emb = o.emb; } }
+      const otras = {...((prev && prev.otras) || {}), ...(viejo.otras || {})};
+      for (const [c, r] of Object.entries(P.res.otras)) otras[c] = {n: r.n, xv: r.xv, d30: r.d30, d60: r.d60, d90: r.d90, m90: r.m90};
+      for (const c of ['BRILLA', 'EMPRESAS', 'TIERRALTA']) if (!P.res.otras[c] && otras[c] && !viejo.otras) delete otras[c];
+      await guardarMes(k, {motos: P.res.motos, electro: P.res.electro, otras, contable: viejo.contable || null, fuente: 'sistema', archivo: CARGA.nombre});
+      SEL = k; toast(`Cartera de ${etqMes(k).toLowerCase()} guardada.`);
+    } else {
+      const ks = new Set(); for (const L of Object.values(CARGA.lineas)) for (const p of Object.values(L)) Object.keys(p).forEach(k => ks.add(k));
+      let n = 0;
+      for (const k of [...ks].sort()) {
+        if (MESD[k] && MESD[k].fuente === 'sistema') continue;
+        const d = JSON.parse(JSON.stringify(MESD[k] || {}));
+        for (const l of ['motos', 'electro']) { const pts = {}; for (const [c, p] of Object.entries(CARGA.lineas[l])) if (p[k]) pts[c] = p[k]; if (Object.keys(pts).length) d[l] = pts; }
+        if (CARGA.otras && k === CARGA.otrasMes) { const o = {}; for (const [nm, r] of Object.entries(CARGA.otras)) { const c = (OTRAS.find(x => norm(x[0]) === nm || norm(x[1]).startsWith(nm)) || [nm])[0]; o[c] = r; } d.otras = o; }
+        d.fuente = 'excel'; d.archivo = CARGA.nombre;
+        b.textContent = `Guardando ${etqMes(k).toLowerCase()}…`; await guardarMes(k, d); n++;
+      }
+      SEL = CARGA.hasta; toast(`Histórico importado: ${n} meses.`);
+    }
+    CARGA = null; render();
+  } catch (e) { console.error(e); b.disabled = false; b.textContent = 'Guardar'; toast(e && e.code === 'quota_exceeded' ? 'La base de la aplicación está llena.' : 'No se pudo guardar. Inténtelo de nuevo.'); }
+}
+/* ---------- Excel para el jefe: una hoja por línea con el formato de sus informes ---------- */
+async function descargar(){
+  if (typeof XLSX === 'undefined' || !SEL) return;
+  const d = MESD[SEL], [y, m] = SEL.split('-').map(Number), corte = `${['Ene','Feb','Mar','Abr','May','Jun','Jul','Agos','Sep','Oct','Nov','Dic'][m - 1]}-${new Date(y, m, 0).getDate()}-${String(y).slice(2)}`;
+  const wb = XLSX.utils.book_new(), prev = anterior(SEL);
+  const CAB = ['PUNTO', 'N° DE CLIENTES', 'T. CARTERA', '%', 'X VENCER', '%', '1 A 30', '%', '31 A 60', '%', '61 A 90', '%', '(+) 90', '%', 'TOTAL ATRASADO', '%', 'ENCARGADO'];
+  const filaX = (nm, r, extra = []) => { const t = tot(r), a = atr(r), p = v => t ? v / t : 0; return [nm, r.n || 0, t, t ? 1 : 0, r.xv, p(r.xv), r.d30, p(r.d30), r.d60, p(r.d60), r.d90, p(r.d90), r.m90, p(r.m90), a, p(a), ...extra]; };
+  const formatear = (ws, nFilas, extraCols) => {
+    const r = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = 1; R <= r.e.r; R++) for (let C = 1; C <= 15; C++) { const cell = ws[XLSX.utils.encode_cell({r: R, c: C})]; if (!cell || typeof cell.v !== 'number') continue; cell.z = [3, 5, 7, 9, 11, 13, 15].includes(C) ? '0.0%' : C === 1 ? '#,##0' : '"$"#,##0'; }
+    ws['!cols'] = [{wch: 30}, {wch: 10}, {wch: 17}, {wch: 7}, {wch: 17}, {wch: 7}, {wch: 14}, {wch: 7}, {wch: 14}, {wch: 7}, {wch: 14}, {wch: 7}, {wch: 14}, {wch: 7}, {wch: 16}, {wch: 7}, {wch: 18}, ...extraCols.map(() => ({wch: 12}))];
+  };
+  for (const l of ['motos', 'electro']) {
+    const cods = puntosDe(l, d).filter(c => d[l] && d[l][c]); if (!cods.length) continue;
+    const extraCab = l === 'motos' ? ['MOTOS RETENIDAS', 'MOTOS EMBARGO', 'BAJÓ O SUBIÓ'] : ['RETENIDOS', 'BAJÓ O SUBIÓ'];
+    const rows = [[`INFORME DE CARTERA ${LINEAS[l].toUpperCase()} · CORTE ${corte}`], [], [...CAB, ...extraCab]];
+    for (const c of cods) { const r = d[l][c], pr = prev && prev[l] ? prev[l][c] : null, bs = pr ? atr(pr) - atr(r) : null;
+      rows.push(filaX(nombreDe(l, c), r, [r.enc || '', ...(l === 'motos' ? [r.ret ?? null, r.emb ?? null] : [r.ret ?? null]), bs])); }
+    const T = suma(cods.map(c => d[l][c])), TP = prev && prev[l] ? suma(Object.values(prev[l])) : null;
+    rows.push(filaX('TOTAL ' + LINEAS[l].toUpperCase(), T, ['', ...(l === 'motos' ? [sum(cods.map(c => d[l][c].ret)), sum(cods.map(c => d[l][c].emb))] : [sum(cods.map(c => d[l][c].ret))]), TP ? atr(TP) - atr(T) : null]));
+    const ws = XLSX.utils.aoa_to_sheet(rows); formatear(ws, rows.length, extraCab);
+    const r = XLSX.utils.decode_range(ws['!ref']); for (let R = 3; R <= r.e.r; R++) { const c = ws[XLSX.utils.encode_cell({r: R, c: rows[2].length - 1})]; if (c && typeof c.v === 'number') c.z = '"$"#,##0;[Red]-"$"#,##0'; }
+    XLSX.utils.book_append_sheet(wb, ws, LINEAS[l].toUpperCase());
+  }
+  // total y diferencia contable
+  const M = suma(Object.values(d.motos || {})), E = suma(Object.values(d.electro || {})), oc = puntosDe('otras', d), O = suma(oc.map(c => (d.otras || {})[c]).filter(Boolean)), T = suma([M, E, O]);
+  const rows = [[`TOTAL CARTERA · CORTE ${corte}`], [], CAB.slice(0, 16), filaX('MOTOS', M), filaX('ELECTRO', E), filaX('OTRAS CARTERAS', O), filaX('TOTAL CARTERA', T), [], ['LA DIFERENCIA DE CARTERA CON EL INFORME CONTABLE ES:'], CAB.slice(0, 16)];
+  for (const c of oc) { const r = (d.otras || {})[c]; if (r) rows.push(filaX(nombreDe('otras', c).toUpperCase(), r)); }
+  rows.push(filaX('TOTAL', O));
+  if (d.contable) { rows.push([]); rows.push(['CARTERA SEGÚN CIERRE CONTABLE', null, d.contable]); rows.push(['DIFERENCIA', null, d.contable - tot(T)]); }
+  const wt = XLSX.utils.aoa_to_sheet(rows); formatear(wt, rows.length, []); XLSX.utils.book_append_sheet(wb, wt, 'TOTAL Y DIFERENCIA');
+  // histórico mensual de cada línea (como la hoja GENERAL)
+  for (const l of ['motos', 'electro']) {
+    const ks = meses().filter(k => MESD[k][l]); if (!ks.length) continue;
+    const hr = [[`HISTÓRICO ${LINEAS[l].toUpperCase()}`], [], ['FECHA DE CORTE', ...CAB.slice(1, 16), 'BAJÓ O SUBIÓ']];
+    ks.forEach((k, i) => { const s = suma(Object.values(MESD[k][l])), p = i ? suma(Object.values(MESD[ks[i - 1]][l])) : null; hr.push([`${MC[+k.slice(5) - 1]} ${k.slice(0, 4)}`, ...filaX('', s).slice(1), p ? atr(p) - atr(s) : null]); });
+    const wh = XLSX.utils.aoa_to_sheet(hr); formatear(wh, hr.length, [1]); wh['!cols'][0] = {wch: 14}; XLSX.utils.book_append_sheet(wb, wh, 'HISTÓRICO ' + LINEAS[l].toUpperCase());
+  }
+  const nombre = `INFORME CARTERA ${MESES[m - 1].toUpperCase()} ${y}.xlsx`, blob = new Blob([XLSX.write(wb, {type: 'array', bookType: 'xlsx'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  try { if (DL) await DL.save({filename: nombre, data: blob}); else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; a.click(); } toast('Excel descargado.'); }
+  catch (e) { if (e && e.code !== 'declined') toast('No se pudo descargar.'); }
+}
+/* ---------- pestañas de Informes ---------- */
+function pestanas(){
+  const t = q('#inf-tabs'); if (!t) return;
+  t.querySelectorAll('[data-inf]').forEach(b => b.onclick = () => {
+    const k = b.dataset.inf; t.querySelectorAll('[data-inf]').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+    q('#rec-main').hidden = k !== 'rec'; q('#edad-main').hidden = k !== 'edad';
+    if (k === 'edad') { empezar(); render(); } else if (window.REC) REC.render();
+  });
+}
+async function empezar(){
+  if (empezado) return; const p = window.MM && MM.perm(); if (!p || !p.owner) return; empezado = true;
+  if (!window.claude?.use) { listo = true; render(); return; }
+  [DB, DL] = await Promise.all([window.claude.use('db'), window.claude.use('downloads')].map(x => x.catch(() => null)));
+  if (!DB) { listo = true; render(); return; }
+  DB.collection('recaudo').onSnapshot(s => {
+    const D = {};
+    s.docs.forEach(d => { const x = d.data(); if (!x) return; if (d.id === '_edades_cfg') CFG = {cuentas: {}, nombres: {motos: {}, electro: {}, otras: {}}, ...x}; else if (d.id.startsWith('edades-')) D[x.mes || d.id.slice(7)] = x; });
+    MESD = D; listo = true;
+    const m = q('#edad-main'); if (m && !m.hidden && !CARGA) render();
+  }, () => { listo = true; render(); });
+  render();
+}
+document.addEventListener('mm:perm', () => { pestanas(); empezar(); });
+if (document.readyState !== 'loading') pestanas(); else document.addEventListener('DOMContentLoaded', pestanas);
+window.EDADES = {render};
+})();
+</script>
+
 
 <script type="text/mm-app">
 (() => {
