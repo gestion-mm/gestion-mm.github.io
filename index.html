@@ -1356,7 +1356,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 
 
 </div>
-<div id="mod-rec" hidden><div class="wrap inf-tabs-w"><div class="seg inf-tabs" id="inf-tabs" role="tablist" aria-label="Informe"><button role="tab" aria-selected="true" data-inf="rec">Recaudo</button><button role="tab" aria-selected="false" data-inf="edad">Cartera por edades</button></div></div><main class="wrap" id="rec-main"></main><main class="wrap" id="edad-main" hidden></main></div>
+<div id="mod-rec" hidden><div class="wrap inf-tabs-w"><div class="seg inf-tabs" id="inf-tabs" role="tablist" aria-label="Informe"><button role="tab" aria-selected="true" data-inf="rec">Recaudos</button><button role="tab" aria-selected="false" data-inf="edad">Cartera por edades</button></div></div><main class="wrap" id="rec-main"></main><main class="wrap" id="edad-main" hidden></main></div>
 <div id="modal-root"></div>
 <script type="text/mm-app">
 (() => {
@@ -6116,7 +6116,7 @@ function vReporte(){
   const meses = MESES.map((n, i) => ({l: MC[i], a: totMes(l, y, i + 1), b: totMes(l, y - 1, i + 1)}));
   const ys = anios(l);
   return `<div class="rec-top">
-      <div><h2>Recaudo</h2><p class="sub">Recaudo por punto de venta en las semanas 1 a 5 de cada mes, como en tu Excel. Solo tú lo ves.</p></div>
+      <div><h2>Recaudos</h2><p class="sub">Recaudo por punto de venta en las semanas 1 a 5 de cada mes, como en tu Excel. Solo tú lo ves.</p></div>
       <div class="rec-ctrl"><div class="seg" role="tablist" aria-label="Línea">${Object.keys(LINEAS).map(k => `<button role="tab" aria-selected="${k === l}" data-lin="${k}">${LINEAS[k]}</button>`).join('')}</div>
         <select id="rec-y" aria-label="Año">${(ys.length ? ys : [y]).map(v => `<option ${v === y ? 'selected' : ''}>${v}</option>`).join('')}</select>
         <select id="rec-m" aria-label="Mes">${MESES.map((n, i) => `<option value="${i + 1}" ${i + 1 === m ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
@@ -7000,7 +7000,7 @@ function renderInicio(){
     const body = !rc.cargado ? '<p class="empty">Cargando recaudo…</p>' : !rc.hay ? '<p class="mc-note" style="font-size:14px">Todavía no hay recaudo guardado.</p><button class="btn" data-mod-go="rec">Subir el primero</button>'
       : `<div class="mc-big"><span class="n">${REC.money(rc.total)}</span><span class="l">recaudo de ${rc.mes.toLowerCase()} ${rc.y}, Motos y Electro</span></div>
         <div class="mc-tiles">${Object.values(L).map(x => `<div class="tile link" data-mod-go="rec" tabindex="0" role="button"><div class="n">${REC.money(x.v)}</div><div class="l">${esc(x.nombre)}${x.pc != null ? ' · ' + REC.fpor(x.pc) + ' de la cartera' : ''}</div>${x.cambio != null ? `<div class="small ${x.cambio < 0 ? 'rojo' : 'okc'}">${REC.fpct(x.cambio)} frente a ${rc.mes.toLowerCase()} ${rc.y - 1}</div>` : ''}</div>`).join('')}</div>`;
-    q('#ini-grid').insertAdjacentHTML('beforeend', `<section class="mod-card rec" aria-labelledby="mc-rec"><div class="mc-head"><div><h3 id="mc-rec">Recaudo</h3><p>Motos y Electro por punto y semana · solo tú lo ves</p></div><button class="btn primary" data-mod-go="rec">Abrir</button></div><div class="mc-body">${body}</div></section>`); }
+    q('#ini-grid').insertAdjacentHTML('beforeend', `<section class="mod-card rec" aria-labelledby="mc-rec"><div class="mc-head"><div><h3 id="mc-rec">Informes · Recaudos</h3><p>Motos y Electro por punto y semana · solo tú lo ves</p></div><button class="btn primary" data-mod-go="rec">Abrir</button></div><div class="mc-body">${body}</div></section>`); }
   if (m && m.owner && m.esperando) q('#ini-grid').insertAdjacentHTML('beforeend', `<div class="mc-alert ini-admin" style="grid-column:1/-1"><span><b>${n(m.esperando)} ${m.esperando === 1 ? 'persona espera' : 'personas esperan'} permiso.</b> Asígnales un rol en Usuarios y permisos; sirve para todos los módulos.</span><button class="btn" data-mtab="usuarios">Usuarios y permisos</button></div>`);
   updBadges(m, l);
 }
