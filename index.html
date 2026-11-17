@@ -6623,9 +6623,10 @@ async function leerSistema(file){
 // los Excel de Kenny (INFORME CARTERA MOTOS / ELECTRO): una hoja por punto con una fila por mes
 const NO_PUNTO = new Set(['GENERAL','COMISION','ASESORES','HOJA1','HOJA2','HOJA3','NEC','TAR','CARREPUES']);
 async function leerHistorico(files){
-  const out = {tipo: 'historico', nombre: files.map(f => f.name).join(' y '), lineas: {motos: {}, electro: {}}, otras: null, otrasMes: null, avisos: []};
+  const out = {tipo: 'historico', nombre: files.map(f => f.name).join(' y '), lineas: {motos: {}, electro: {}}, otras: null, otrasMes: null, avisos: [], archivos: {}};
   for (const file of files) {
     const nf = norm(file.name), l = nf.includes('ELECTRO') ? 'electro' : nf.includes('MOTO') ? 'motos' : null;
+    if (l) out.archivos[l] = file;
     if (!l) { out.avisos.push(`No supe si ${file.name} es de Motos o de Electro (el nombre debe decir MOTOS o ELECTRO).`); continue; }
     for (const h of await hojas(file)) {
       const code = h.n.trim().toUpperCase();
@@ -6775,8 +6776,12 @@ function render(){
       <div class="rec-ctrl"><div class="seg" role="tablist" aria-label="Vista">${[['motos', 'Motos'], ['electro', 'Electro'], ['total', 'Total y diferencia']].map(([k, n]) => `<button role="tab" aria-selected="${k === VISTA}" data-ev="${k}">${n}</button>`).join('')}</div>
       ${ks.length ? `<select id="ed-mes" aria-label="Mes">${ks.slice().reverse().map(k => `<option value="${k}" ${k === SEL ? 'selected' : ''}>${etqMes(k)}</option>`).join('')}</select>` : ''}</div></div>
     ${DB ? `<div class="rec-acc"><label class="btn primary" for="ed-f-sis">Subir informe de edades del sistema</label><input type="file" id="ed-f-sis" accept=".xlsx,.xls,.csv" hidden>
-      ${d ? '<button class="btn" id="ed-xls">Descargar Excel</button>' : ''}
+      ${d && (PLC.motos || PLC.electro) ? '<button class="btn primary" id="ed-mios">Descargar mis Excel</button>' : ''}${d ? `<button class="btn" id="ed-xls">${PLC.motos || PLC.electro ? 'Excel resumen' : 'Descargar Excel'}</button>` : ''}
       <label class="btn" for="ed-f-hist">${ks.length ? 'Importar mis Excel de cartera' : 'Importar mis Excel de cartera (histórico)'}</label><input type="file" id="ed-f-hist" accept=".xlsx" multiple hidden></div>` : '<div class="banner">Abra la aplicación desde el portal para subir y guardar la cartera.</div>'}
+    ${DB ? `<details class="hist-box" style="margin-top:10px"><summary class="btn small">Mis plantillas de Excel</summary><div class="panel" style="margin-top:8px;display:grid;gap:8px">
+      <p class="small" style="margin:0">Al tocar <b>Descargar mis Excel</b> la aplicación toma sus propios archivos INFORME CARTERA MOTOS y ELECTRO y les agrega los meses nuevos: una fila en la hoja de cada punto y otra en GENERAL, con sus mismos colores, formatos y fórmulas. El total cartera y el cuadro de diferencia se corren solos hacia abajo.</p>
+      ${Object.keys(LINEAS).map(k => `<div class="nov-actions" style="align-items:center"><span style="min-width:70px"><b>${LINEAS[k]}</b></span><span class="small ${PLC[k] ? '' : 'rojo'}">${PLC[k] ? esc(PLC[k].nombre) + ' · guardada el ' + esc(String(PLC[k].at).slice(0, 10).split('-').reverse().join('/')) : 'Sin plantilla'}</span><label class="btn small" for="ed-pl-${k}">${PLC[k] ? 'Cambiar' : 'Subir'}</label><input type="file" id="ed-pl-${k}" data-epl="${k}" accept=".xlsx" hidden></div>`).join('')}
+    </div></details>` : ''}
     ${CARGA ? vCarga() : ''}
     ${!d ? `<p class="empty" style="margin-top:14px">Todavía no hay cartera guardada. Suba el informe de edades del sistema (RPT_CARTERA_EDADES_CORTE) del cierre del mes, o importe sus Excel de INFORME CARTERA MOTOS y ELECTRO para traer todo el histórico.</p>` :
       `${d.fuente === 'sistema' ? `<p class="small muted" style="margin:10px 0 0">Corte de ${etqMes(SEL).toLowerCase()} · tomado de ${esc(d.archivo || 'el informe del sistema')}</p>` : `<p class="small muted" style="margin:10px 0 0">${etqMes(SEL)} · tomado de sus Excel de cartera</p>`}
@@ -6792,6 +6797,8 @@ function bind(){
     render(); const p = q('#edad-main .rec-carga'); if (p) p.scrollIntoView({block: 'start', behavior: 'smooth'}); }; };
   abrir('#ed-f-sis', leerSistema); abrir('#ed-f-hist', leerHistorico, true);
   const xb = q('#ed-xls'); if (xb) xb.onclick = descargar;
+  const xm = q('#ed-mios'); if (xm) xm.onclick = descargarMios;
+  root.querySelectorAll('[data-epl]').forEach(inp => inp.onchange = async () => { const f = inp.files[0], l = inp.dataset.epl; inp.value = ''; if (!f) return; toast('Guardando su Excel como plantilla…'); try { await subirPlantillaC(f, l); toast(`Plantilla de ${LINEAS[l]} guardada.`); render(); } catch (e) { toast(e && e.message === 'formato-plantilla' ? 'Ese archivo no es un Excel (.xlsx).' : 'No se pudo guardar la plantilla.'); } });
   // motos retenidas / embargo por punto
   root.querySelectorAll('[data-ep]').forEach(inp => inp.onchange = async () => {
     const l = inp.dataset.el, c = inp.dataset.ep, f = inp.dataset.ef, v = inp.value.trim() === '' ? null : Math.round(+inp.value.replace(/\D/g, '')) || 0;
@@ -6836,7 +6843,8 @@ async function guardar(){
         d.fuente = 'excel'; d.archivo = CARGA.nombre;
         b.textContent = `Guardando ${etqMes(k).toLowerCase()}…`; await guardarMes(k, d); n++;
       }
-      SEL = CARGA.hasta; toast(`Histórico importado: ${n} meses.`);
+      for (const [l, f] of Object.entries(CARGA.archivos || {})) { if (!/\.xlsx$/i.test(f.name)) continue; b.textContent = `Guardando plantilla de ${LINEAS[l]}…`; try { await subirPlantillaC(f, l); } catch (e) {} }
+      SEL = CARGA.hasta; toast(`Histórico importado: ${n} meses. Sus Excel quedaron como plantilla para descargar.`);
     }
     CARGA = null; render();
   } catch (e) { console.error(e); b.disabled = false; b.textContent = 'Guardar'; toast(e && e.code === 'quota_exceeded' ? 'La base de la aplicación está llena.' : 'No se pudo guardar. Inténtelo de nuevo.'); }
@@ -6883,6 +6891,181 @@ async function descargar(){
   try { if (DL) await DL.save({filename: nombre, data: blob}); else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; a.click(); } toast('Excel descargado.'); }
   catch (e) { if (e && e.code !== 'declined') toast('No se pudo descargar.'); }
 }
+/* ---------- Sus propios Excel (INFORME CARTERA MOTOS / ELECTRO) como plantilla: se agregan los meses nuevos con su mismo formato ---------- */
+let PLC = {};
+const b64de = u8 => { let x = ''; for (let i = 0; i < u8.length; i += 0x8000) x += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(x); };
+const CHK = 240000;
+async function subirPlantillaC(file, l){
+  if (typeof JSZip === 'undefined') throw new Error('zip');
+  const u8 = new Uint8Array(await file.arrayBuffer()), z = await JSZip.loadAsync(u8); if (!z.file('xl/workbook.xml')) throw new Error('formato-plantilla');
+  const b64 = b64de(u8), n = Math.ceil(b64.length / CHK), pc = DB.collection('plantillas'), id = 'cartera-' + l;
+  for (let i = 0; i < n; i++) await pc.doc(`${id}-${i}`).set({i, b64: b64.slice(i * CHK, (i + 1) * CHK)});
+  const prev = PLC[l]; if (prev && prev.n > n) for (let i = n; i < prev.n; i++) { try { await pc.doc(`${id}-${i}`).delete(); } catch (e) {} }
+  const meta = {n, nombre: file.name, tam: u8.length, at: new Date().toISOString()}; await pc.doc(id).set(meta); PLC[l] = meta;
+}
+async function cargarPlantillasC(){ for (const l of Object.keys(LINEAS)) { try { const d = await DB.collection('plantillas').doc('cartera-' + l).get(); if (d.exists) PLC[l] = d.data(); } catch (e) {} } }
+async function obtenerPlantillaC(l){
+  const meta = PLC[l]; let b64 = '';
+  for (let i = 0; i < meta.n; i++) { const d = await DB.collection('plantillas').doc(`cartera-${l}-${i}`).get(); if (!d.exists) throw new Error('incompleta'); b64 += d.data().b64; }
+  return JSZip.loadAsync(b64, {base64: true});
+}
+const XNS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+const colNum = s => s.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+const colStr = n => { let s = ''; while (n) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+const REFX = /((?:'[^']+'|[A-Za-z_][A-Za-z0-9_.]*)!)?(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_])/g;
+// fn(hoja|null, col, fila, colAbs, filaAbs) -> [col, fila]
+const moverF = (f, fn) => f.split('"').map((p, k) => k % 2 ? p : p.replace(REFX, (m, hoja, ca, c, ra, r) => {
+  const [nc, nr] = fn(hoja ? hoja.slice(0, -1).replace(/^'|'$/g, '') : null, colNum(c), +r, !!ca, !!ra);
+  return (hoja || '') + ca + colStr(nc) + ra + nr; })).join('"');
+const ETQ = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Agos','Sep','Oct','Nov','Dic'];
+const etqCorte = k => { const [y, m] = k.split('-').map(Number); return `${ETQ[m - 1]}-${new Date(y, m, 0).getDate()}-${String(y).slice(2)}`; };
+async function llenarPlantillaC(zip, l, hasta){
+  const P = new DOMParser(), S = new XMLSerializer();
+  const leer = async p => P.parseFromString(await zip.file(p).async('string'), 'application/xml');
+  const wb = await leer('xl/workbook.xml'), rels = await leer('xl/_rels/workbook.xml.rels');
+  const relMap = {}; for (const r of rels.getElementsByTagName('Relationship')) relMap[r.getAttribute('Id')] = r.getAttribute('Target');
+  const hojasWb = [...wb.getElementsByTagName('sheet')].map(s => { let t = relMap[s.getAttribute('r:id')] || ''; t = t.startsWith('/') ? t.slice(1) : 'xl/' + t.replace(/^\.\//, ''); return {name: s.getAttribute('name'), path: t}; });
+  const sst = []; if (zip.file('xl/sharedStrings.xml')) { const sx = await leer('xl/sharedStrings.xml'); for (const si of sx.getElementsByTagName('si')) sst.push([...si.getElementsByTagName('t')].map(t => t.textContent).join('')); }
+  const H = {};
+  const abrir = async h => {
+    if (H[h.name]) return H[h.name];
+    const doc = await leer(h.path), sd = doc.getElementsByTagName('sheetData')[0], filas = new Map(), celdas = new Map(), maestros = new Map();
+    for (const row of sd.getElementsByTagName('row')) { filas.set(+row.getAttribute('r'), row); for (const c of row.getElementsByTagName('c')) { celdas.set(c.getAttribute('r'), c); const f = c.getElementsByTagName('f')[0]; if (f && f.getAttribute('t') === 'shared' && f.getAttribute('ref')) maestros.set(f.getAttribute('si'), {text: f.textContent, ref: c.getAttribute('r')}); } }
+    // las fórmulas compartidas se vuelven fórmulas normales para poder mover filas sin dañarlas
+    for (const c of celdas.values()) { const f = c.getElementsByTagName('f')[0]; if (!f || f.getAttribute('t') !== 'shared') continue;
+      const m = maestros.get(f.getAttribute('si')); if (!m) continue;
+      const [, mc, mr] = m.ref.match(/([A-Z]+)(\d+)/), [, cc, cr] = c.getAttribute('r').match(/([A-Z]+)(\d+)/), dc = colNum(cc) - colNum(mc), dr = +cr - +mr;
+      f.textContent = moverF(m.text, (s, col, row, ca, ra) => [ca ? col : col + dc, ra ? row : row + dr]); ['t', 'si', 'ref'].forEach(a => f.removeAttribute(a)); }
+    return (H[h.name] = {h, doc, sd, filas, celdas, cambio: true});
+  };
+  const valor = c => { if (!c) return null; const t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0], tx = v ? v.textContent : null;
+    if (t === 's') return tx == null ? null : sst[+tx]; if (t === 'inlineStr') return [...c.getElementsByTagName('t')].map(x => x.textContent).join('');
+    if (t === 'str' || t === 'e' || t === 'b') return tx; return tx == null || tx === '' ? null : +tx; };
+  const fx = c => { const f = c && c.getElementsByTagName('f')[0]; return f ? f.textContent : null; };
+  const limpiar = c => { [...c.childNodes].forEach(x => c.removeChild(x)); c.removeAttribute('t'); };
+  const poner = (Hh, c, v) => { limpiar(c); if (v == null || v === '') return; if (typeof v === 'number') { const vv = Hh.doc.createElementNS(XNS, 'v'); vv.textContent = String(v); c.appendChild(vv); }
+    else { c.setAttribute('t', 'inlineStr'); const is = Hh.doc.createElementNS(XNS, 'is'), t = Hh.doc.createElementNS(XNS, 't'); t.textContent = String(v); is.appendChild(t); c.appendChild(is); } };
+  const celda = (Hh, ref) => { let c = Hh.celdas.get(ref); if (c) return c; const [, cc, rr] = ref.match(/([A-Z]+)(\d+)/); const row = Hh.filas.get(+rr); if (!row) return null;
+    c = Hh.doc.createElementNS(XNS, 'c'); c.setAttribute('r', ref); const sig = [...row.getElementsByTagName('c')].find(x => colNum(x.getAttribute('r').match(/[A-Z]+/)[0]) > colNum(cc)); row.insertBefore(c, sig || null); Hh.celdas.set(ref, c); return c; };
+  const copiarFila = (Hh, src, dest, fRef) => {
+    const s = Hh.filas.get(src), row = s.cloneNode(false); row.setAttribute('r', String(dest)); row.removeAttribute('spans');
+    for (const c of s.getElementsByTagName('c')) {
+      const [, cc] = c.getAttribute('r').match(/([A-Z]+)/), nc = Hh.doc.createElementNS(XNS, 'c'); nc.setAttribute('r', cc + dest); if (c.getAttribute('s')) nc.setAttribute('s', c.getAttribute('s'));
+      const f = fx(c); if (f != null) { const fe = Hh.doc.createElementNS(XNS, 'f'); fe.textContent = moverF(f, fRef); nc.appendChild(fe); }
+      row.appendChild(nc); Hh.celdas.set(cc + dest, nc);
+    }
+    const sig = [...Hh.filas.keys()].filter(k => k > dest).sort((a, b) => a - b)[0]; Hh.sd.insertBefore(row, sig ? Hh.filas.get(sig) : null); Hh.filas.set(dest, row);
+  };
+  // corre hacia abajo n filas todo lo que está debajo de 'after' (notas, totales, cuadros) y arregla las fórmulas de esa hoja
+  const insertar = (Hh, after, n, extra) => {
+    const yo = Hh.h.name.trim().toUpperCase();
+    for (const r of [...Hh.filas.keys()].filter(r => r > after).sort((a, b) => b - a)) { const row = Hh.filas.get(r); row.setAttribute('r', String(r + n)); for (const c of row.getElementsByTagName('c')) { const [, cc] = c.getAttribute('r').match(/([A-Z]+)/); c.setAttribute('r', cc + (r + n)); } }
+    const nf = new Map(); for (const [r, row] of Hh.filas) nf.set(r > after ? r + n : r, row); Hh.filas = nf; Hh.celdas = new Map(); for (const row of Hh.filas.values()) for (const c of row.getElementsByTagName('c')) Hh.celdas.set(c.getAttribute('r'), c);
+    for (const [r, row] of Hh.filas) for (const c of row.getElementsByTagName('c')) { const f = c.getElementsByTagName('f')[0]; if (!f) continue;
+      f.textContent = moverF(f.textContent, (sh, col, rr) => [col, sh && sh.trim().toUpperCase() !== yo ? rr : rr > after ? rr + n : (extra && r > after + n && rr === after) ? after + n : rr]); }
+    for (const tag of ['mergeCell', 'conditionalFormatting', 'dataValidation']) for (const e of [...Hh.doc.getElementsByTagName(tag)]) { const a = tag === 'mergeCell' ? 'ref' : 'sqref'; const v = e.getAttribute(a); if (v) e.setAttribute(a, v.replace(/([A-Z]+)(\d+)/g, (m, cc, rr) => cc + (+rr > after ? +rr + n : rr))); }
+  };
+  const avisos = []; let nuevos = 0;
+  const ks = meses().filter(k => k <= hasta);
+  const ultimoExcel = c => ks.filter(k => MESD[k].fuente === 'excel' && MESD[k][l] && MESD[k][l][c]).pop() || null;
+  const rowOf = {};
+  // 1) una fila nueva por mes en la hoja de cada punto
+  for (const h of hojasWb) {
+    const code = h.name.trim().toUpperCase(); if (code === 'GENERAL') continue;
+    const k0 = ultimoExcel(code); if (!k0) continue;
+    const add = ks.filter(k => k > k0 && MESD[k][l] && MESD[k][l][code]); if (!add.length) continue;
+    const Hh = await abrir(h);
+    let last = 0; for (const [r] of Hh.filas) { const a = valor(Hh.celdas.get('A' + r)); if (r > 1 && a != null && a !== '' && (mesDe(a) || typeof a === 'number')) last = Math.max(last, r); }
+    if (!last) continue;
+    const HD = [...Hh.filas.get(1).getElementsByTagName('c')].reduce((o, c) => { o[norm(valor(c))] = c.getAttribute('r').match(/[A-Z]+/)[0]; return o; }, {});
+    const colDe = re => { const k = Object.keys(HD).find(x => re.test(x)); return k ? HD[k] : null; };
+    const cEnc = colDe(/^ENCARGADO/), cRet = colDe(/RETENID|ELECTRORET/), cEmb = colDe(/EMBARGO/);
+    rowOf[h.name] = {[k0]: last};
+    // lo que haya debajo del último mes (notas, metas) se corre hacia abajo
+    if ([...Hh.filas.keys()].some(r => r > last)) insertar(Hh, last, add.length, false);
+    let src = last;
+    for (const k of add) {
+      const dest = src + 1, r = MESD[k][l][code];
+      if (Hh.filas.has(dest)) { Hh.sd.removeChild(Hh.filas.get(dest)); Hh.filas.delete(dest); }
+      copiarFila(Hh, src, dest, (s, col, row, ca, ra) => [col, !s && !ra ? row + 1 : row]);
+      const vals = {A: etqCorte(k), B: +r.n || 0, E: r.xv, G: r.d30, I: r.d60, K: r.d90, M: r.m90, C: tot(r), O: atr(r)};
+      for (const [cc, v] of Object.entries(vals)) { const c = celda(Hh, cc + dest); if (!c) continue; if ((cc === 'C' || cc === 'O') && fx(c)) continue; poner(Hh, c, v); }
+      if (cEnc) { const c = celda(Hh, cEnc + dest); if (c && !fx(c)) poner(Hh, c, r.enc || ''); }
+      if (cRet) { const c = celda(Hh, cRet + dest); if (c && !fx(c)) poner(Hh, c, r.ret == null ? null : +r.ret); }
+      if (cEmb) { const c = celda(Hh, cEmb + dest); if (c && !fx(c)) poner(Hh, c, r.emb == null ? null : +r.emb); }
+      // las columnas que no son fórmula ni dato del mes (comisión, etc.) quedan vacías
+      for (const c of Hh.filas.get(dest).getElementsByTagName('c')) { const cc = c.getAttribute('r').match(/[A-Z]+/)[0]; if (!fx(c) && !(cc in vals) && cc !== cEnc && cc !== cRet && cc !== cEmb) limpiar(c); }
+      rowOf[h.name][k] = dest; src = dest; nuevos++;
+    }
+  }
+  // 2) GENERAL: se insertan las filas de los meses nuevos debajo del último mes y se corre lo de abajo (total cartera, diferencia)
+  const hg = hojasWb.find(h => h.name.trim().toUpperCase() === 'GENERAL');
+  const otra = l === 'motos' ? 'electro' : 'motos';
+  if (hg) {
+    const G = await abrir(hg);
+    // último mes de la tabla de arriba: la última fila con fecha antes del primer texto (TOTAL CARTERA, LA DIFERENCIA...)
+    let Lr = 0; for (const r of [...G.filas.keys()].filter(x => x >= 2).sort((x, y) => x - y)) { const a = valor(G.celdas.get('A' + r)), cC = G.celdas.get('C' + r);
+      if (a != null && a !== '' && (mesDe(a) || typeof a === 'number')) { if (fx(cC) || typeof valor(cC) === 'number') Lr = r; } else if (typeof a === 'string' && /TOTAL|DIFERENCIA/i.test(a) && Lr) break; }
+    const kG0 = ks.filter(k => MESD[k].fuente === 'excel' && MESD[k][l]).pop();
+    const nuevosG = ks.filter(k => k > kG0 && MESD[k][l] && Object.values(rowOf).some(m => m[k]));
+    const n = nuevosG.length;
+    // valor de la otra línea (vínculo externo [2]GENERAL!...) -> se escribe el número del mes
+    const tOtra = MESD[hasta] && MESD[hasta][otra] ? suma(Object.values(MESD[hasta][otra])) : null;
+    const colVal = {B: s => s.n, C: s => tot(s), E: s => s.xv, G: s => s.d30, I: s => s.d60, K: s => s.d90, M: s => s.m90, O: s => atr(s)};
+    for (const c of G.celdas.values()) { const f = c.getElementsByTagName('f')[0]; if (!f || !/\[\d+\][^!]*!/.test(f.textContent)) continue;
+      f.textContent = f.textContent.replace(/\[\d+\][A-Za-z0-9_ ]*!\$?([A-Z]+)\$?\d+/g, (m, cc) => tOtra && colVal[cc] ? String(Math.round(colVal[cc](tOtra))) : m); }
+    if (n && Lr) {
+      // a) correr hacia abajo lo que está debajo del último mes (total cartera, diferencia); lo que apuntaba al último mes pasa a apuntar al nuevo
+      insertar(G, Lr, n, true);
+      // b) las filas de los meses nuevos copiando la del mes anterior
+      let src = Lr, kPrev = kG0;
+      for (const k of nuevosG) {
+        const dest = src + 1;
+        copiarFila(G, src, dest, (s, col, row, ca, ra) => { if (!s || s.toUpperCase() === 'GENERAL') return [col, ra ? row : row + 1];
+          const m = rowOf[s] || rowOf[Object.keys(rowOf).find(x => x.trim().toUpperCase() === s.trim().toUpperCase())]; return [col, m && m[k] && m[kPrev] && !ra ? row + (m[k] - m[kPrev]) : row]; });
+        poner(G, celda(G, 'A' + dest), etqCorte(k)); src = dest; kPrev = k;
+      }
+    }
+    // c) otras carteras del cuadro de diferencia (solo en el informe de Motos)
+    const ot = MESD[hasta] && MESD[hasta].otras;
+    if (ot && l === 'motos') for (const [r] of G.filas) { const a = norm(valor(G.celdas.get('A' + r))); const c = Object.keys(ot).find(x => norm(x) === a || (a && norm(nombreDe('otras', x)).startsWith(a))); if (!c || a === 'TOTAL') continue;
+      const o = ot[c]; for (const [cc, v] of [['B', o.n], ['E', o.xv], ['G', o.d30], ['I', o.d60], ['K', o.d90], ['M', o.m90]]) { const x = celda(G, cc + r); if (x && !fx(x)) poner(G, x, v ? +v : 0); } }
+  }
+  // 3) guardar: Excel recalcula todo al abrir
+  for (const Hh of Object.values(H)) {
+    for (const c of Hh.celdas.values()) { const f = c.getElementsByTagName('f')[0]; if (!f) continue; const v = c.getElementsByTagName('v')[0]; if (v) c.removeChild(v); if (['str', 'e', 'b'].includes(c.getAttribute('t'))) c.removeAttribute('t'); }
+    const mx = Math.max(...Hh.filas.keys()), dim = Hh.doc.getElementsByTagName('dimension')[0]; if (dim) { const [a, b] = (dim.getAttribute('ref') || 'A1').split(':'); dim.setAttribute('ref', `${a}:${b ? b.replace(/\d+/, '') : 'A'}${mx}`); }
+    zip.file(Hh.h.path, S.serializeToString(Hh.doc));
+  }
+  let calc = wb.getElementsByTagName('calcPr')[0]; if (!calc) { calc = wb.createElementNS(XNS, 'calcPr'); wb.documentElement.appendChild(calc); } calc.setAttribute('fullCalcOnLoad', '1');
+  zip.file('xl/workbook.xml', S.serializeToString(wb));
+  if (zip.file('xl/calcChain.xml')) {
+    zip.remove('xl/calcChain.xml');
+    for (const r of [...rels.getElementsByTagName('Relationship')]) if (/calcChain/.test(r.getAttribute('Target'))) r.parentNode.removeChild(r);
+    zip.file('xl/_rels/workbook.xml.rels', S.serializeToString(rels));
+    const ct = await leer('[Content_Types].xml'); for (const o of [...ct.getElementsByTagName('Override')]) if (/calcChain/.test(o.getAttribute('PartName'))) o.parentNode.removeChild(o);
+    zip.file('[Content_Types].xml', S.serializeToString(ct));
+  }
+  return {nuevos, avisos};
+}
+async function descargarMios(){
+  const b = q('#ed-mios'); if (b) { b.disabled = true; b.textContent = 'Preparando sus Excel…'; }
+  const res = [];
+  for (const l of Object.keys(LINEAS)) {
+    if (!PLC[l]) continue;
+    try {
+      const zip = await obtenerPlantillaC(l), r = await llenarPlantillaC(zip, l, SEL);
+      const blob = await zip.generateAsync({type: 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const nom = `INFORME CARTERA ${LINEAS[l].toUpperCase()} ${etqMes(SEL).toUpperCase()}.xlsx`;
+      if (DL) await DL.save({filename: nom, data: blob}); else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nom; a.click(); }
+      res.push(`${LINEAS[l]}: ${r.nuevos ? r.nuevos + ' filas nuevas' : 'sin meses nuevos'}`); r.avisos.forEach(x => res.push(x));
+      await new Promise(z => setTimeout(z, 600));
+    } catch (e) { console.error(e); if (!(e && e.code === 'declined')) res.push(`${LINEAS[l]}: no se pudo preparar (${e && e.message === 'incompleta' ? 'la plantilla guardada está incompleta, súbala de nuevo' : 'error'}).`); }
+  }
+  if (b) { b.disabled = false; b.textContent = 'Descargar mis Excel'; }
+  toast(res.length ? 'Listo. ' + res.join(' · ') : 'Primero suba sus Excel de cartera.');
+}
+
 /* ---------- pestañas de Informes ---------- */
 function pestanas(){
   const t = q('#inf-tabs'); if (!t) return;
@@ -6897,6 +7080,7 @@ async function empezar(){
   if (!window.claude?.use) { listo = true; render(); return; }
   [DB, DL] = await Promise.all([window.claude.use('db'), window.claude.use('downloads')].map(x => x.catch(() => null)));
   if (!DB) { listo = true; render(); return; }
+  cargarPlantillasC().then(() => { const m = q('#edad-main'); if (m && !m.hidden && !CARGA) render(); });
   DB.collection('recaudo').onSnapshot(s => {
     const D = {};
     s.docs.forEach(d => { const x = d.data(); if (!x) return; if (d.id === '_edades_cfg') CFG = {cuentas: {}, nombres: {motos: {}, electro: {}, otras: {}}, ...x}; else if (d.id.startsWith('edades-')) D[x.mes || d.id.slice(7)] = x; });
