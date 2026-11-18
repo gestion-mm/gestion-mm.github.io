@@ -7343,6 +7343,8 @@ async function descargarMios(){
   }
   SEL = hasta;
   if (!anterior(hasta) && (PLC.motos || PLC.electro)) await traerAnterior(hasta);
+  // los electrodomésticos se cargan solo cuando se abre ese módulo: se esperan para poder contar los retenidos
+  if (window.ELE && ELE.retenidosAl) for (let i = 0; i < 60; i++) { const R = ELE.retenidosAl('2000-01-01'); if (R && R.cargado) break; await new Promise(r => setTimeout(r, 250)); }
   const b = q('#ed-mios'); if (b) { b.disabled = true; b.textContent = 'Preparando sus Excel…'; }
   const res = [];
   for (const l of Object.keys(LINEAS)) {
