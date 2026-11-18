@@ -6804,7 +6804,7 @@ function vTotal(d){
   const cont = +d.contable || 0, dif = cont ? cont - tt : null;
   return `<div class="panel" style="margin-top:12px"><h3 style="margin:0 0 8px">Total cartera · ${etqMes(SEL)}</h3>
     <div class="tbl-wrap"><table class="rec-tab ed-tab"><thead><tr><th></th><th class="num">Clientes</th><th class="num">T. cartera</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total atrasado</th></tr></thead>
-    <tbody>${fila('Motos', M)}${fila('Electro', E)}${fila('Otras carteras (abajo)', O)}</tbody><tfoot>${fila('TOTAL CARTERA', T)}</tfoot></table></div></div>
+    <tbody>${fila('Motos', M)}${fila('Electro', E)}</tbody><tfoot>${fila('TOTAL CARTERA', T)}</tfoot></table></div></div>
     <div class="panel" style="margin-top:12px"><h3 style="margin:0 0 4px">La diferencia de cartera con el informe contable es:</h3>
     <p class="small muted" style="margin:0 0 8px">Carteras que no se cobran desde cartera pero que el contador sí suma. Brilla, Empresas y Tierralta salen solas del informe del sistema; Repuestos, Carbomax y Corbeta se escriben aquí; si un mes no las escribe, quedan en cero.</p>
     <div class="tbl-wrap"><table class="rec-tab ed-tab"><thead><tr><th>Cartera</th><th class="num">Clientes</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>
