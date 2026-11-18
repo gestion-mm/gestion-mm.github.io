@@ -1899,10 +1899,17 @@ function casi(a, b){ // true when a and b differ by at most one letter (typo)
   while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++d > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } }
   return d + (a.length - i) + (b.length - j) <= 1;
 }
+// la moto estaba retenida ese día y no se había retomado (sigue afectando la cartera en mora)
+function retenidaAl(r, d){
+  if (!r.fechaRecibo || r.fechaRecibo > d) return false;
+  if (r.fechaSalida ? r.fechaSalida <= d : !PODER.has(r.estado)) return false;
+  if (r.retoma === 'Sí' && (!r.fechaRetoma || r.fechaRetoma <= d)) return false;
+  return true;
+}
 function filtered(all){
   const f = S.f, q = sinTilde(f.text.trim()), t = q.replace(/[\s-]/g,''), words = q.split(/[\s,]+/).filter(Boolean);
-  const base = all.filter(r => (!f.estado || (f.estado==='__poder' ? PODER.has(r.estado) : r.estado===f.estado))
-    && (!f.pdv || r.pdv===f.pdv) && (!f.year || (r.fechaRecibo||'').startsWith(f.year)) && (!f.revisar || (r.revisar && r.revisar.length)) && (!f.repetidas || veces(r).total > 1) && (!f.desc || descPend(r)));
+  const base = all.filter(r => (!f.corte || retenidaAl(r, f.corte)) && (!f.estado || (f.estado==='__poder' ? PODER.has(r.estado) : r.estado===f.estado))
+    && (!f.pdv || r.pdv===f.pdv || sinTilde(r.pdv||'').toUpperCase()===sinTilde(f.pdv).toUpperCase()) && (!f.year || (r.fechaRecibo||'').startsWith(f.year)) && (!f.revisar || (r.revisar && r.revisar.length)) && (!f.repetidas || veces(r).total > 1) && (!f.desc || descPend(r)));
   const orden = (a,b) => (b.fechaRecibo||'').localeCompare(a.fechaRecibo||'') || (b.numero||0)-(a.numero||0);
   S.fuzzy = false;
   if (!t) return base.sort(orden);
@@ -1934,16 +1941,20 @@ function vMotos(all){
     <select id="fYear" aria-label="Año de recibo"><option value="">Todos los años</option>${opt(years,S.f.year)}</select>
     <label class="chk"><input type="checkbox" id="fRev" ${S.f.revisar?'checked':''}> Con datos por revisar</label>
     <label class="chk"><input type="checkbox" id="fRep" ${S.f.repetidas?'checked':''}> Retenidas más de una vez</label>
+    <label class="chk" title="Motos que estaban retenidas ese día y todavía no se habían retomado">Retenidas al corte del <input type="date" id="fCorte" value="${esc(S.f.corte||'')}" style="min-height:34px;padding:2px 6px"></label>${S.f.corte ? '<button class="btn small" id="fCorteX">Quitar corte</button>' : ''}
     ${S.owner && Object.keys(S.del).length ? `<label class="chk"><input type="checkbox" id="fDel" ${S.f.borradas?'checked':''}> Ver eliminadas (${Object.keys(S.del).length})</label>` : ''}
     ${S.readOnly||S.dbDown ? '' : '<button class="btn primary" id="newMoto">+ Nueva moto</button>'}
     ${S.owner && !S.readOnly && !S.dbDown ? '<button class="btn" id="ptsBtn">Puntos de venta</button>' : ''}
     ${S.downloads ? '<button class="btn" id="csvMotos">Descargar CSV</button>' : ''}
   </div>
+  ${S.f.corte ? (() => { const pp = {}; rows.forEach(r => { const k = r.pdv || 'Sin punto', x = pp[k] = pp[k] || {n: 0, e: 0}; x.n++; if (r.estado === 'En patios (embargo)') x.e++; }); const emb = rows.filter(r => r.estado === 'En patios (embargo)').length;
+    return `<div class="panel" style="margin:0 0 12px;padding:12px 14px"><p style="margin:0 0 6px"><b>${rows.length}</b> motos afectaban la cartera el <b>${fd(S.f.corte)}</b>: <b>${rows.length - emb}</b> retenidas y <b>${emb}</b> en patios (embargo). <span class="muted small">No cuentan las que ya habían salido ni las retomadas hasta ese día.</span></p>
+      <div class="small" style="display:flex;flex-wrap:wrap;gap:6px 14px">${Object.entries(pp).sort((a, b) => b[1].n - a[1].n).map(([k, x]) => `<span><b>${esc(k)}</b>: ${x.n - x.e}${x.e ? ` + ${x.e} en patios` : ''}</span>`).join('')}</div></div>`; })() : ''}
   ${S.fuzzy ? `<div class="banner" style="margin:0 0 10px">No hay ninguna moto con exactamente "${esc(S.f.text)}". Estas tienen un nombre parecido:</div>` : ''}
   ${nAbon != null ? `<p style="margin:0 0 10px"><b>${rows.length}</b> motos en sala · de ellas, <b>${nAbon}</b> abonando <span class="chip st-abono">abonando</span></p>` : ''}
   <div class="tbl-wrap"><table><thead><tr><th class="num">N.°</th><th>Retención</th><th>Punto</th><th>Deudor</th><th>Moto</th><th>Placa</th><th>Estado</th><th>Salida</th><th>Veces retenida</th><th></th></tr></thead><tbody>
   ${slice.map(r => `<tr class="click" data-id="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.fechaRecibo)}</td><td>${esc(r.pdv)}</td><td>${esc(r.deudor)}</td><td>${esc(r.linea)}</td><td>${plate(r.placa)}</td><td>${chipR(r)}</td><td>${fd(r.fechaSalida)}</td><td>${vezChip(r) || '<span class="muted small">1</span>'}</td>
-    <td>${dobleAbierta(r)?'<span class="chip pill-red">Registrada dos veces</span> ':''}${r._del?'<span class="chip pill-red">Eliminada</span> ':''}${cobroPend(r)?'<span class="chip pill-red">Cobro pendiente</span> ':''}${isNovedad(r)?'<span class="chip pill-warn">Por revisar</span> ':''}${r.revisar&&r.revisar.length?'<span class="chip st-sd">Dato por corregir</span>':''}${r.faltan&&r.faltan.length?' <span class="chip pill-warn">Faltan datos</span>':''}${r.estado==='Recuperada por el cliente'&&r.recDesde&&r.recDesde!=='En sala'?` <span class="chip st-recup">desde ${esc({'En taller':'taller','Para la venta':'venta'}[r.recDesde] || r.recDesde.toLowerCase())}</span>`:''}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Ninguna moto coincide con la búsqueda.</td></tr>'}
+    <td>${r.retoma === 'Sí' ? `<span class="chip" title="Retomada: ya no afecta la cartera">Retomada${r.fechaRetoma ? ' ' + fd(r.fechaRetoma) : ''}</span> ` : ''}${dobleAbierta(r)?'<span class="chip pill-red">Registrada dos veces</span> ':''}${r._del?'<span class="chip pill-red">Eliminada</span> ':''}${cobroPend(r)?'<span class="chip pill-red">Cobro pendiente</span> ':''}${isNovedad(r)?'<span class="chip pill-warn">Por revisar</span> ':''}${r.revisar&&r.revisar.length?'<span class="chip st-sd">Dato por corregir</span>':''}${r.faltan&&r.faltan.length?' <span class="chip pill-warn">Faltan datos</span>':''}${r.estado==='Recuperada por el cliente'&&r.recDesde&&r.recDesde!=='En sala'?` <span class="chip st-recup">desde ${esc({'En taller':'taller','Para la venta':'venta'}[r.recDesde] || r.recDesde.toLowerCase())}</span>`:''}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Ninguna moto coincide con la búsqueda.</td></tr>'}
   </tbody></table></div>
   <div class="pager"><span>${nfmt(rows.length)} motos · página ${S.f.page+1} de ${pages}</span>
     <button class="btn" id="pgPrev" ${S.f.page?'':'disabled'}>Anterior</button><button class="btn" id="pgNext" ${S.f.page<pages-1?'':'disabled'}>Siguiente</button></div>`;
@@ -2153,6 +2164,8 @@ function bindView(){
   on('fYear','onchange', e => { S.f.year = e.target.value; S.f.page=0; render(); });
   on('fRev','onchange', e => { S.f.revisar = e.target.checked; S.f.page=0; render(); });
   on('fRep','onchange', e => { S.f.repetidas = e.target.checked; S.f.page=0; render(); });
+  on('fCorte','onchange', e => { S.f.corte = e.target.value; S.f.page=0; render(); });
+  on('fCorteX','onclick', () => { S.f.corte = ''; S.f.page=0; render(); });
   on('fDel','onchange', e => { S.f.borradas = e.target.checked; S.f.page=0; render(); });
   on('pgPrev','onclick', () => { S.f.page--; render(); });
   on('pgNext','onclick', () => { S.f.page++; render(); });
@@ -5037,12 +5050,16 @@ function refreshBadges(){ const all = records(); { const al = nAlertas(all), ba 
 let _mmT = 0;
 function mmNotify(){ clearTimeout(_mmT); _mmT = setTimeout(() => document.dispatchEvent(new CustomEvent('mm:data')), 60); }
 window.MM = {
+  verRetenidas(d, pdv){
+    S.f = {...S.f, corte: d, pdv: pdv || '', estado: '', year: '', text: '', revisar: false, repetidas: false, borradas: false, page: 0}; S.tab = 'motos';
+    const b = document.querySelector('#mainnav button[data-mod=motos]'); if (b) b.click();
+    document.querySelectorAll('[data-tab]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === 'motos'))); render(); window.scrollTo(0, 0);
+  },
+  pdvs(){ return [...PDVS]; },
   retenidasAl(d){
     const o = {};
     for (const r of records()) {
-      if (!r.fechaRecibo || r.fechaRecibo > d) continue;
-      if (r.fechaSalida ? r.fechaSalida <= d : !PODER.has(r.estado)) continue;
-      if (r.retoma === 'Sí' && (!r.fechaRetoma || r.fechaRetoma <= d)) continue;
+      if (!retenidaAl(r, d)) continue;
       const k = r.pdv || '', x = o[k] = o[k] || {ret: 0, emb: 0};
       if (r.estado === 'En patios (embargo)') x.emb++; else x.ret++;
     }
@@ -6725,7 +6742,7 @@ function filaPunto(l, c, r, prev, k, edit){
   return `<tr><td><b>${esc(nombreDe(l, c))}</b>${r.enc ? `<div class="small muted">${esc(r.enc)}</div>` : ''}</td><td class="num">${(+r.n || 0).toLocaleString('es-CO')}</td><td class="num"><b>${money(t)}</b></td>
     ${ED.map(e => `<td class="num">${r[e] ? money(r[e]) : '<span class="muted">—</span>'}<div class="small muted">${fpor(pc(r[e], t))}</div></td>`).join('')}
     <td class="num ${a ? 'rojo' : ''}"><b>${money(a)}</b><div class="small">${fpor(pc(a, t))}</div></td>
-    <td class="num">${inp('ret', r.ret)}</td>${l === 'motos' ? `<td class="num">${inp('emb', r.emb)}</td>` : ''}
+    <td class="num">${inp('ret', r.ret)}${l === 'motos' && window.MM && MM.verRetenidas && MESD[k] && MESD[k].fuente === 'sistema' ? `<div><a href="#" class="small" data-verret="${esc(c)}">ver cuáles</a></div>` : ''}</td>${l === 'motos' ? `<td class="num">${inp('emb', r.emb)}</td>` : ''}
     <td class="num ${bs == null ? '' : bs >= 0 ? 'okc' : 'rojo'}">${bs == null ? '—' : (bs >= 0 ? '▼ ' : '▲ ') + money(Math.abs(bs))}</td></tr>`;
 }
 function vLinea(l, d){
@@ -7007,6 +7024,8 @@ function bind(){
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } });
   const ct = q('#ed-cont'); if (ct) ct.onchange = async () => { const d = JSON.parse(JSON.stringify(MESD[SEL])); d.contable = Math.round(+ct.value.replace(/\D/g, '')) || 0;
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } };
+  root.querySelectorAll('[data-verret]').forEach(a => a.onclick = ev => { ev.preventDefault(); const al = (PDV_MOTOS[a.dataset.verret] || []).map(norm);
+    const pdv = (MM.pdvs ? MM.pdvs() : []).find(p => al.includes(norm(p))) || ''; MM.verRetenidas(finMes(SEL), pdv); });
   bindComision();
   if (!CARGA) return;
   q('#ed-cancelar').onclick = () => { CARGA = null; render(); };
