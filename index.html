@@ -6763,7 +6763,7 @@ function filaPunto(l, c, r, prev, k, edit){
     ${ED.map(e => `<td class="num">${r[e] ? money(r[e]) : '<span class="muted">—</span>'}<div class="small muted">${fpor(pc(r[e], t))}</div></td>`).join('')}
     <td class="num ${a ? 'rojo' : ''}"><b>${money(a)}</b><div class="small">${fpor(pc(a, t))}</div></td>
     <td class="num">${inp('ret', r.ret)}${MESD[k] && MESD[k].fuente === 'sistema' && (l === 'motos' ? window.MM && MM.verRetenidas : window.ELE && ELE.verRetenidos) ? `<div><a href="#" class="small" data-verret="${esc(c)}" data-verl="${l}">ver cuáles</a></div>` : ''}</td>${l === 'motos' ? `<td class="num">${inp('emb', r.emb)}</td>` : ''}
-    <td class="num ${bs == null ? '' : bs >= 0 ? 'okc' : 'rojo'}">${bs == null ? '—' : (bs >= 0 ? '▼ ' : '▲ ') + money(Math.abs(bs))}</td></tr>`;
+    <td class="num" style="font-weight:600;color:${bs == null ? 'inherit' : bs >= 0 ? '#00a3e0' : '#e00000'}">${bs == null ? '—' : bs >= 0 ? money(bs) : '(' + money(-bs) + ')'}</td></tr>`;
 }
 function vLinea(l, d){
   const prev = anterior(SEL), cods = puntosDe(l, d).filter(c => d[l] && d[l][c]);
@@ -7168,6 +7168,14 @@ async function llenarPlantillaC(zip, l, hasta){
   const relMap = {}; for (const r of rels.getElementsByTagName('Relationship')) relMap[r.getAttribute('Id')] = r.getAttribute('Target');
   const hojasWb = [...wb.getElementsByTagName('sheet')].map(s => { let t = relMap[s.getAttribute('r:id')] || ''; t = t.startsWith('/') ? t.slice(1) : 'xl/' + t.replace(/^\.\//, ''); return {name: s.getAttribute('name'), path: t}; });
   const sst = []; if (zip.file('xl/sharedStrings.xml')) { const sx = await leer('xl/sharedStrings.xml'); for (const si of sx.getElementsByTagName('si')) sst.push([...si.getElementsByTagName('t')].map(t => t.textContent).join('')); }
+  // colores de "BAJÓ O SUBIÓ": azul cuando bajó, rojo (entre paréntesis) cuando subió, tomando los mismos estilos que ya usa la hoja
+  const stx = zip.file('xl/styles.xml') ? await leer('xl/styles.xml') : null;
+  const fCol = stx && stx.getElementsByTagName('fonts')[0] ? [...stx.getElementsByTagName('fonts')[0].getElementsByTagName('font')].map(f => { const c = f.getElementsByTagName('color')[0]; return c ? (c.getAttribute('rgb') || '') : ''; }) : [];
+  const xfs = stx && stx.getElementsByTagName('cellXfs')[0] ? [...stx.getElementsByTagName('cellXfs')[0].getElementsByTagName('xf')] : [];
+  const tono = st => { const xf = xfs[+st || 0]; if (!xf) return ''; const m = (fCol[+xf.getAttribute('fontId') || 0] || '').match(/([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/i); if (!m) return '';
+    const [r, g, b] = m.slice(1).map(x => parseInt(x, 16)); return b > 150 && b > r + 60 ? 'azul' : r > 150 && g < 110 && b < 110 ? 'rojo' : ''; };
+  const colorear = (Hx, col, dest, v) => { if (!col || v == null || !v) return; const quiere = v > 0 ? 'azul' : 'rojo', c = Hx.celdas.get(col + dest); if (!c || tono(c.getAttribute('s')) === quiere) return;
+    for (let r = dest - 1; r > 1; r--) { const x = Hx.celdas.get(col + r); if (x && tono(x.getAttribute('s')) === quiere) { c.setAttribute('s', x.getAttribute('s')); return; } } };
   const H = {};
   const abrir = async h => {
     if (H[h.name]) return H[h.name];
@@ -7227,7 +7235,7 @@ async function llenarPlantillaC(zip, l, hasta){
     const add = ks.filter(k => k > k0 && MESD[k][l] && MESD[k][l][code]); if (!add.length) continue;
     const HD = [...Hh.filas.get(1).getElementsByTagName('c')].reduce((o, c) => { o[norm(valor(c))] = c.getAttribute('r').match(/[A-Z]+/)[0]; return o; }, {});
     const colDe = re => { const k = Object.keys(HD).find(x => re.test(x)); return k ? HD[k] : null; };
-    const cEnc = colDe(/^ENCARGADO/), cRet = colDe(/RETENID|ELECTRORET/), cEmb = colDe(/EMBARGO/);
+    const cEnc = colDe(/^ENCARGADO/), cRet = colDe(/RETENID|ELECTRORET/), cEmb = colDe(/EMBARGO/), cBS = colDe(/^BAJ.*SUB/);
     rowOf[h.name] = {_base: last};
     // lo que haya debajo del último mes (notas, metas) se corre hacia abajo
     if ([...Hh.filas.keys()].some(r => r > last)) insertar(Hh, last, add.length, false);
@@ -7244,6 +7252,7 @@ async function llenarPlantillaC(zip, l, hasta){
       if (cEmb) { const c = celda(Hh, cEmb + dest); if (c && !fx(c)) poner(Hh, c, rr.emb == null ? null : +rr.emb); }
       // las columnas que no son fórmula ni dato del mes (comisión, etc.) quedan vacías
       for (const c of Hh.filas.get(dest).getElementsByTagName('c')) { const cc = c.getAttribute('r').match(/[A-Z]+/)[0]; if (!fx(c) && !(cc in vals) && cc !== cEnc && cc !== cRet && cc !== cEmb) limpiar(c); }
+      { const pv = anterior(k), p = pv && pv[l] && pv[l][code]; if (p) colorear(Hh, cBS, dest, atr(p) - atr(r)); }
       rowOf[h.name][k] = dest; src = dest; nuevos++;
     }
   }
@@ -7272,7 +7281,11 @@ async function llenarPlantillaC(zip, l, hasta){
         const dest = src + 1;
         copiarFila(G, src, dest, (s, col, row, ca, ra) => { if (!s || s.toUpperCase() === 'GENERAL') return [col, ra ? row : row + 1];
           const m = rowOf[s] || rowOf[Object.keys(rowOf).find(x => x.trim().toUpperCase() === s.trim().toUpperCase())]; const pr = m ? (m[kPrev] || m._base) : null; return [col, m && m[k] && pr && !ra ? row + (m[k] - pr) : row]; });
-        poner(G, celda(G, 'A' + dest), etqCorte(k)); src = dest; kPrev = k;
+        poner(G, celda(G, 'A' + dest), etqCorte(k));
+        { const HDg = [...(G.filas.get(1) || {getElementsByTagName: () => []}).getElementsByTagName('c')].reduce((o, c) => { o[norm(valor(c))] = c.getAttribute('r').match(/[A-Z]+/)[0]; return o; }, {});
+          const kb = Object.keys(HDg).find(x => /^BAJ.*SUB/.test(x)), pv = anterior(k);
+          if (kb && pv && pv[l] && MESD[k][l]) colorear(G, HDg[kb], dest, atr(suma(Object.values(pv[l]))) - atr(suma(Object.values(MESD[k][l])))); }
+        src = dest; kPrev = k;
       }
     }
     // c) otras carteras del cuadro de diferencia (solo en el informe de Motos)
