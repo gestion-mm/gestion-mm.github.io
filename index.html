@@ -7192,6 +7192,38 @@ async function llenarPlantillaC(zip, l, hasta){
     if (ot && l === 'motos') for (const [r] of G.filas) { const a = norm(valor(G.celdas.get('A' + r))); if (!a || a === 'TOTAL') continue; const c = [...new Set([...OTRAS.map(x => x[0]), ...Object.keys(ot)])].find(x => norm(x) === a || norm(nombreDe('otras', x)).startsWith(a)); if (!c) continue;
       const o = ot[c] || vacia(); for (const [cc, v] of [['B', o.n], ['E', o.xv], ['G', o.d30], ['I', o.d60], ['K', o.d90], ['M', o.m90]]) { const x = celda(G, cc + r); if (x && !fx(x)) poner(G, x, v ? +v : 0); } }
   }
+  // 2b) hoja COMISION (en el libro de Motos): se agrega el cuadro del mes con el mismo formato del último mes
+  const hc = l === 'motos' && hojasWb.find(h => h.name.trim().toUpperCase() === 'COMISION');
+  if (hc && MESD[hasta] && anterior(hasta)) {
+    const Hc = await abrir(hc), rs = [...Hc.filas.keys()].sort((a, b) => a - b);
+    const hdr = rs.filter(r => norm(valor(Hc.celdas.get('A' + r))) === 'COBRADOR').pop();
+    const [y, m] = hasta.split('-').map(Number);
+    const yaEsta = rs.some(r => { const v = valor(Hc.celdas.get('A' + r)); return typeof v === 'number' && mesDe(v) === hasta; });
+    const {filas: cf} = comisiones(hasta), act = cf.filter(f => !f.sinAsesor && !f.excl);
+    if (hdr && !yaEsta && act.length) {
+      const estilo = r => { const o = {}, row = Hc.filas.get(r); if (row) for (const c of row.getElementsByTagName('c')) o[c.getAttribute('r').match(/[A-Z]+/)[0]] = c.getAttribute('s'); return o; };
+      const sT = estilo(hdr - 1), sH = estilo(hdr), sD1 = estilo(hdr + 1), sD2 = estilo(hdr + 2);
+      const COLS = 'ABCDEFGHI'.split('');
+      const fila = (r, sty) => { const row = Hc.doc.createElementNS(XNS, 'row'); row.setAttribute('r', String(r)); const tpl = Hc.filas.get(hdr + 1); if (tpl && tpl.getAttribute('ht')) { row.setAttribute('ht', tpl.getAttribute('ht')); row.setAttribute('customHeight', '1'); }
+        for (const cc of COLS) { const c = Hc.doc.createElementNS(XNS, 'c'); c.setAttribute('r', cc + r); if (sty[cc]) c.setAttribute('s', sty[cc]); row.appendChild(c); Hc.celdas.set(cc + r, c); }
+        Hc.sd.appendChild(row); Hc.filas.set(r, row); return row; };
+      const fx2 = (r, cc, f) => { const c = Hc.celdas.get(cc + r); limpiar(c); const fe = Hc.doc.createElementNS(XNS, 'f'); fe.textContent = f; c.appendChild(fe); };
+      let r = rs[rs.length - 1] + 2;
+      fila(r, sT); poner(Hc, Hc.celdas.get('A' + r), Math.round((Date.UTC(y, m - 1, 26) - Date.UTC(1899, 11, 30)) / 864e5)); r++;
+      fila(r, sH); ['COBRADOR', 'CARTERAS', 'RECAUDO', 'BAJO', 'SUBIO', 'COMISION', 'Nº DE CLIENTES', 'Nº TOTAL CLIENTES', 'COMISION TOTAL'].forEach((t, i) => poner(Hc, Hc.celdas.get(COLS[i] + r), t)); r++;
+      const grupos = []; for (const f of act) { let g = grupos.find(x => x.a === f.asesor); if (!g) grupos.push(g = {a: f.asesor, f: []}); g.f.push(f); }
+      const r1 = r;
+      for (const g of grupos) { const r0 = r;
+        g.f.forEach((f, i) => { fila(r, i ? sD2 : sD1); const P = (cc, v) => poner(Hc, Hc.celdas.get(cc + r), v);
+          if (!i) P('A', g.a.toUpperCase()); P('B', nomCartera(f.l, f.c)); if (f.rec != null) P('C', f.rec);
+          if (f.bajo > 0) P('D', f.bajo); if (f.bajo < 0) P('E', -f.bajo);
+          if (f.est === 'no') P('F', 0); else if (f.fijo) P('F', f.valor); else fx2(r, 'F', `C${r}*${f.tasa}%`);
+          P('G', f.n); r++; });
+        fx2(r0, 'H', `SUM(G${r0}:G${r - 1})`); fx2(r0, 'I', `SUM(F${r0}:F${r - 1})`); }
+      fila(r, sD2); fx2(r, 'I', `SUM(I${r1}:I${r - 1})`);
+      avisos.push(`Comisiones de ${etqMes(hasta).toLowerCase()} agregadas en la hoja COMISION.`);
+    }
+  }
   // 3) guardar: Excel recalcula todo al abrir
   for (const Hh of Object.values(H)) {
     for (const c of Hh.celdas.values()) { const f = c.getElementsByTagName('f')[0]; if (!f) continue; const v = c.getElementsByTagName('v')[0]; if (v) c.removeChild(v); if (['str', 'e', 'b'].includes(c.getAttribute('t'))) c.removeAttribute('t'); }
@@ -7216,6 +7248,7 @@ async function descargarMios(){
     return toast(`Sus Excel ya llegan hasta ${ult ? etqMes(ult).toLowerCase() : 'el último mes'}. Para agregar el mes nuevo, primero toque "Subir informe de edades del sistema", elija el corte del mes (RPT_CARTERA_EDADES_CORTE…) y toque "Guardar cartera". Después vuelva a "Descargar mis Excel".`);
   }
   SEL = hasta;
+  if (!anterior(hasta) && (PLC.motos || PLC.electro)) await traerAnterior(hasta);
   const b = q('#ed-mios'); if (b) { b.disabled = true; b.textContent = 'Preparando sus Excel…'; }
   const res = [];
   for (const l of Object.keys(LINEAS)) {
