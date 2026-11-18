@@ -6970,18 +6970,24 @@ async function llenarPlantillaC(zip, l, hasta){
   const ks = meses().filter(k => k <= hasta);
   const ultimoExcel = c => ks.filter(k => MESD[k].fuente === 'excel' && MESD[k][l] && MESD[k][l][c]).pop() || null;
   const rowOf = {};
+  const sist = ks.filter(k => MESD[k].fuente !== 'excel');
+  const menos1 = k => { const [y, m] = k.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${pad(m - 1)}`; };
+  // el último mes que ya tiene el Excel se toma de la propia hoja (la etiqueta de la última fila); si no se entiende, de lo importado
+  const baseDe = (etq, code) => { const k = mesDe(etq), ue = code ? ultimoExcel(code) : ks.filter(x => MESD[x].fuente === 'excel' && MESD[x][l]).pop();
+    if (k && (!sist.length || k <= sist[sist.length - 1]) && (!ue || k >= ue)) return k; return ue || (sist.length ? menos1(sist[0]) : null); };
   // 1) una fila nueva por mes en la hoja de cada punto
   for (const h of hojasWb) {
     const code = h.name.trim().toUpperCase(); if (code === 'GENERAL') continue;
-    const k0 = ultimoExcel(code); if (!k0) continue;
-    const add = ks.filter(k => k > k0 && MESD[k][l] && MESD[k][l][code]); if (!add.length) continue;
+    if (!sist.some(k => MESD[k][l] && MESD[k][l][code])) continue;
     const Hh = await abrir(h);
     let last = 0; for (const [r] of Hh.filas) { const a = valor(Hh.celdas.get('A' + r)); if (r > 1 && a != null && a !== '' && (mesDe(a) || typeof a === 'number')) last = Math.max(last, r); }
     if (!last) continue;
+    const k0 = baseDe(valor(Hh.celdas.get('A' + last)), code); if (!k0) continue;
+    const add = ks.filter(k => k > k0 && MESD[k][l] && MESD[k][l][code]); if (!add.length) continue;
     const HD = [...Hh.filas.get(1).getElementsByTagName('c')].reduce((o, c) => { o[norm(valor(c))] = c.getAttribute('r').match(/[A-Z]+/)[0]; return o; }, {});
     const colDe = re => { const k = Object.keys(HD).find(x => re.test(x)); return k ? HD[k] : null; };
     const cEnc = colDe(/^ENCARGADO/), cRet = colDe(/RETENID|ELECTRORET/), cEmb = colDe(/EMBARGO/);
-    rowOf[h.name] = {[k0]: last};
+    rowOf[h.name] = {_base: last};
     // lo que haya debajo del último mes (notas, metas) se corre hacia abajo
     if ([...Hh.filas.keys()].some(r => r > last)) insertar(Hh, last, add.length, false);
     let src = last;
@@ -7007,8 +7013,8 @@ async function llenarPlantillaC(zip, l, hasta){
     // último mes de la tabla de arriba: la última fila con fecha antes del primer texto (TOTAL CARTERA, LA DIFERENCIA...)
     let Lr = 0; for (const r of [...G.filas.keys()].filter(x => x >= 2).sort((x, y) => x - y)) { const a = valor(G.celdas.get('A' + r)), cC = G.celdas.get('C' + r);
       if (a != null && a !== '' && (mesDe(a) || typeof a === 'number')) { if (fx(cC) || typeof valor(cC) === 'number') Lr = r; } else if (typeof a === 'string' && /TOTAL|DIFERENCIA/i.test(a) && Lr) break; }
-    const kG0 = ks.filter(k => MESD[k].fuente === 'excel' && MESD[k][l]).pop();
-    const nuevosG = ks.filter(k => k > kG0 && MESD[k][l] && Object.values(rowOf).some(m => m[k]));
+    const kG0 = Lr ? baseDe(valor(G.celdas.get('A' + Lr)), null) : null;
+    const nuevosG = ks.filter(k => (!kG0 || k > kG0) && MESD[k][l] && Object.values(rowOf).some(m => m[k]));
     const n = nuevosG.length;
     // valor de la otra línea (vínculo externo [2]GENERAL!...) -> se escribe el número del mes
     const tOtra = MESD[hasta] && MESD[hasta][otra] ? suma(Object.values(MESD[hasta][otra])) : null;
@@ -7023,7 +7029,7 @@ async function llenarPlantillaC(zip, l, hasta){
       for (const k of nuevosG) {
         const dest = src + 1;
         copiarFila(G, src, dest, (s, col, row, ca, ra) => { if (!s || s.toUpperCase() === 'GENERAL') return [col, ra ? row : row + 1];
-          const m = rowOf[s] || rowOf[Object.keys(rowOf).find(x => x.trim().toUpperCase() === s.trim().toUpperCase())]; return [col, m && m[k] && m[kPrev] && !ra ? row + (m[k] - m[kPrev]) : row]; });
+          const m = rowOf[s] || rowOf[Object.keys(rowOf).find(x => x.trim().toUpperCase() === s.trim().toUpperCase())]; const pr = m ? (m[kPrev] || m._base) : null; return [col, m && m[k] && pr && !ra ? row + (m[k] - pr) : row]; });
         poner(G, celda(G, 'A' + dest), etqCorte(k)); src = dest; kPrev = k;
       }
     }
