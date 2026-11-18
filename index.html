@@ -6550,7 +6550,7 @@ const sum = a => (a || []).reduce((t, x) => t + (+x || 0), 0);
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9%]/g, '');
 const fpor = (v, d = 1) => v == null || !isFinite(v) ? '—' : v.toLocaleString('es-CO', {maximumFractionDigits: d, minimumFractionDigits: d}) + '%';
 const pc = (a, b) => b ? a / b * 100 : null;
-function toast(m){ const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 5000); }
+function toast(m){ const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), Math.max(5000, String(m).length * 70)); }
 
 const LINEAS = {motos: 'Motos', electro: 'Electro'};
 // puntos en el mismo orden y con los mismos nombres de hoja que los Excel de Kenny
@@ -6777,7 +6777,8 @@ function render(){
       ${ks.length ? `<select id="ed-mes" aria-label="Mes">${ks.slice().reverse().map(k => `<option value="${k}" ${k === SEL ? 'selected' : ''}>${etqMes(k)}</option>`).join('')}</select>` : ''}</div></div>
     ${DB ? `<div class="rec-acc"><label class="btn primary" for="ed-f-sis">Subir informe de edades del sistema</label><input type="file" id="ed-f-sis" accept=".xlsx,.xls,.csv" hidden>
       ${d && (PLC.motos || PLC.electro) ? '<button class="btn primary" id="ed-mios">Descargar mis Excel</button>' : ''}${d ? `<button class="btn" id="ed-xls">${PLC.motos || PLC.electro ? 'Excel resumen' : 'Descargar Excel'}</button>` : ''}
-      <label class="btn" for="ed-f-hist">${ks.length ? 'Importar mis Excel de cartera' : 'Importar mis Excel de cartera (histórico)'}</label><input type="file" id="ed-f-hist" accept=".xlsx" multiple hidden></div>` : '<div class="banner">Abra la aplicación desde el portal para subir y guardar la cartera.</div>'}
+      <label class="btn" for="ed-f-hist">${ks.length ? 'Importar mis Excel de cartera' : 'Importar mis Excel de cartera (histórico)'}</label><input type="file" id="ed-f-hist" accept=".xlsx" multiple hidden></div>
+      ${ks.length ? (() => { const ult = ks[ks.length - 1], ex = ks.filter(k => MESD[k].fuente === 'excel').pop(); return `<p class="small ${ex && ex >= ult ? 'rojo' : 'muted'}" style="margin:8px 0 0">Último mes guardado: <b>${etqMes(ult)}</b>${ex && ex >= ult ? ` (viene de sus Excel). Para agregar el mes siguiente, suba primero el corte del sistema con "Subir informe de edades del sistema" y toque "Guardar cartera".` : (PLC.motos || PLC.electro ? ` · "Descargar mis Excel" le agrega hasta ${etqMes(ult).toLowerCase()}.` : '')}</p>`; })() : ''}` : '<div class="banner">Abra la aplicación desde el portal para subir y guardar la cartera.</div>'}
     ${DB ? `<details class="hist-box" style="margin-top:10px"><summary class="btn small">Mis plantillas de Excel</summary><div class="panel" style="margin-top:8px;display:grid;gap:8px">
       <p class="small" style="margin:0">Al tocar <b>Descargar mis Excel</b> la aplicación toma sus propios archivos INFORME CARTERA MOTOS y ELECTRO y les agrega los meses nuevos: una fila en la hoja de cada punto y otra en GENERAL, con sus mismos colores, formatos y fórmulas. El total cartera y el cuadro de diferencia se corren solos hacia abajo.</p>
       ${Object.keys(LINEAS).map(k => `<div class="nov-actions" style="align-items:center"><span style="min-width:70px"><b>${LINEAS[k]}</b></span><span class="small ${PLC[k] ? '' : 'rojo'}">${PLC[k] ? esc(PLC[k].nombre) + ' · guardada el ' + esc(String(PLC[k].at).slice(0, 10).split('-').reverse().join('/')) : 'Sin plantilla'}</span><label class="btn small" for="ed-pl-${k}">${PLC[k] ? 'Cambiar' : 'Subir'}</label><input type="file" id="ed-pl-${k}" data-epl="${k}" accept=".xlsx" hidden></div>`).join('')}
@@ -6795,7 +6796,7 @@ function bind(){
   const abrir = (id, fn, multi) => { const f = q(id); if (f) f.onchange = async () => { const files = [...f.files]; f.value = ''; if (!files.length) return;
     try { CARGA = await fn(multi ? files : files[0]); } catch (e) { toast({'formato-sistema': 'Ese archivo no parece el informe de cartera por edades del sistema: no tiene las columnas CUENTA y T. CARTERA.', 'formato-historico': 'No encontré meses en esos archivos. Deben ser sus Excel INFORME CARTERA MOTOS y ELECTRO.', xlsx: 'No se pudo cargar el lector de Excel. Recargue la página.'}[e.message] || 'No se pudo leer el archivo.'); }
     render(); const p = q('#edad-main .rec-carga'); if (p) p.scrollIntoView({block: 'start', behavior: 'smooth'}); }; };
-  abrir('#ed-f-sis', leerSistema); abrir('#ed-f-hist', leerHistorico, true);
+  abrir('#ed-f-sis', leerSistema); abrir('#ed-f-hist', fs => fs.length === 1 && /RPT|EDADES[_ ]?CORTE|CORTE/i.test(fs[0].name) ? leerSistema(fs[0]) : leerHistorico(fs), true);
   const xb = q('#ed-xls'); if (xb) xb.onclick = descargar;
   const xm = q('#ed-mios'); if (xm) xm.onclick = descargarMios;
   root.querySelectorAll('[data-epl]').forEach(inp => inp.onchange = async () => { const f = inp.files[0], l = inp.dataset.epl; inp.value = ''; if (!f) return; toast('Guardando su Excel como plantilla…'); try { await subirPlantillaC(f, l); toast(`Plantilla de ${LINEAS[l]} guardada.`); render(); } catch (e) { toast(e && e.message === 'formato-plantilla' ? 'Ese archivo no es un Excel (.xlsx).' : 'No se pudo guardar la plantilla.'); } });
@@ -7049,6 +7050,12 @@ async function llenarPlantillaC(zip, l, hasta){
   return {nuevos, avisos};
 }
 async function descargarMios(){
+  const ks = meses(), hasta = ks[ks.length - 1];
+  if (!hasta || !ks.some(k => MESD[k].fuente === 'sistema' && ks.filter(x => MESD[x].fuente === 'excel').every(x => x < k))) {
+    const ult = ks.filter(k => MESD[k].fuente === 'excel').pop();
+    return toast(`Sus Excel ya llegan hasta ${ult ? etqMes(ult).toLowerCase() : 'el último mes'}. Para agregar el mes nuevo, primero toque "Subir informe de edades del sistema", elija el corte del mes (RPT_CARTERA_EDADES_CORTE…) y toque "Guardar cartera". Después vuelva a "Descargar mis Excel".`);
+  }
+  SEL = hasta;
   const b = q('#ed-mios'); if (b) { b.disabled = true; b.textContent = 'Preparando sus Excel…'; }
   const res = [];
   for (const l of Object.keys(LINEAS)) {
