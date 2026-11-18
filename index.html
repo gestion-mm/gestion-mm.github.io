@@ -3657,6 +3657,7 @@ function eAbrir(id, ir){
     <div class="sheet-head"><h2 id="eTitle">${isNew ? 'Nuevo electrodoméstico' : `N.° ${esc(cur.numero)} · ${esc(cur.deudor || '')}`}</h2>${isNew ? '' : eChip(cur)}<button class="btn" id="eClose">Cerrar</button></div>
     <div class="sheet-body">
       <fieldset class="estado-top"><legend>Estado actual</legend><div class="fgrid">${inp('estado', 'Estado', {sel: isNew ? ['En sala'] : E_ESTADOS, req: 1})}</div>
+        ${!isNew && isJefe() && !ro ? `<div class="nov-actions" style="margin:8px 0 0;align-items:center">${cur.fechaRetoma ? `<span class="chip">Retomado el ${fd(cur.fechaRetoma)}</span>` : ''}<button type="button" class="btn ${cur.fechaRetoma ? '' : 'primary'}" id="eIrRetoma">${cur.fechaRetoma ? 'Cambiar fecha de retoma' : 'Marcar retoma'}</button><span class="small muted">Si ya se retomó (se bajó del sistema), escriba la fecha y guarde.</span></div>` : ''}
         ${!isNew && cur.estado === 'En sala' ? `<p class="small muted" style="margin:6px 0 0">${eVencido(cur) ? `<b class="rojo">Ya pasaron los ${E_PLAZO} días</b> (${daysBetween(cur.fechaRecibo, todayISO())} días en sala). Revisa si el cliente abonó o inicia la retoma.` : `Plazo para recuperarlo: hasta el ${fd(masDias(cur.fechaRecibo, E_PLAZO))}.`}</p>` : ''}</fieldset>
       ${cur.importado && cur.faltan && cur.faltan.length ? `<div class="revisar" style="margin:0 0 12px"><b>Viene del Excel histórico con información pendiente.</b> Se puede guardar igual; complétala cuando puedas:<ul style="margin:6px 0 0 18px">${cur.faltan.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
       <section class="etapa"><div class="etapa-head" style="cursor:default"><span class="etapa-t">En sala</span><span class="etapa-sub">Recibo, artículo, fotos, estado de cuenta y abonos</span></div><div class="etapa-body">
@@ -3724,6 +3725,8 @@ function eAbrir(id, ir){
   root.querySelectorAll('select, input[type=date]').forEach(el => el.addEventListener('change', eSync));
   ['e_retenidaPor'].forEach(i => { const el = $('#' + i); if (el) el.addEventListener('input', eSync); });
   if ($('#eEnviarRet')) $('#eEnviarRet').onclick = () => eGuardar(salir, 'enviarRet');
+  if ($('#eIrRetoma')) $('#eIrRetoma').onclick = () => { const sf = $('#eSaldoFs'); if (sf) sf.hidden = false; const f = $('#e_fechaRetoma'); if (!f) return;
+    f.scrollIntoView({block: 'center', behavior: 'smooth'}); const box = f.closest('fieldset'); if (box) { box.classList.add('bell-flash'); setTimeout(() => box.classList.remove('bell-flash'), 2500); } setTimeout(() => { f.focus(); try { f.showPicker && f.showPicker(); } catch (e) {} }, 400); };
   if ($('#eApOk')) $('#eApOk').onclick = () => eAprobar(true, salir);
   if ($('#eApNo')) $('#eApNo').onclick = () => eAprobar(false, salir);
   if ($('#eSave')) $('#eSave').onclick = () => eGuardar(salir);
@@ -4788,7 +4791,7 @@ async function cLoteLeer(files, pinta){
       let dd = null, pagada = false;
       const ya = huella && Object.values(C.lec).find(x => x.huella === huella && x.datos);
       // si el archivo se llama con la placa (ej. GRY01I.pdf) y esa placa ya está guardada, no se paga lectura
-      const pn = (String(f.nombre).toUpperCase().replace(/[\s._-]+/g, '').match(/[A-Z]{3}\d{2}[A-Z]/) || [])[0] || '';
+      const pn = (String(f.nombre).toUpperCase().replace(/[\s._-]+/g, '').match(/[A-Z]{3}\d{2}[A-Z]|\d{3}[A-Z]{3}/) || [])[0] || '';
       const guard = pn ? cDatosPlaca(nid(pn)) : null, mo = pn && !guard ? records().find(z => nid(z.placa) === nid(pn)) : null;
       if (ya) { dd = {...ya.datos}; f.nota = 'Esta misma hoja ya se había leído: no se pagó otra lectura.'; }
       else if (guard || mo) { dd = guard ? {...guard.d} : {nombre: mo.deudor, placa: mo.placa, marca: mo.marca, linea: mo.linea, modelo: mo.modelo, chasis: mo.chasis, color: mo.color}; f.nota = `La placa ${pn} ya estaba guardada: se usaron esos datos, no se pagó lectura.`; }
@@ -5366,7 +5369,7 @@ async function readItem(it){
     it.dudas = {};
     for (const q of Array.isArray(r.dudas) ? r.dudas : []) { const k = KEYMAP[q?.campo]; if (k) it.dudas[k] = String(q.nota || "Revise este dato"); }
     if (it.extra.vin && d.chasis && normPlaca(it.extra.vin) !== normPlaca(d.chasis)) it.dudas.chasis = `El VIN (${it.extra.vin}) y el número de chasis no coinciden en la tarjeta.`;
-    if (d.placa && !/^[A-Z]{3}\d{2}[A-Z]$/.test(d.placa)) it.dudas.placa = it.dudas.placa || "No tiene el formato de placa de moto (3 letras, 2 números, 1 letra).";
+    if (d.placa && !/^[A-Z]{3}\d{2}[A-Z]$/.test(normPlaca(d.placa)) && !/^\d{3}[A-Z]{3}$/.test(normPlaca(d.placa))) it.dudas.placa = it.dudas.placa || "No tiene el formato de placa de moto (3 letras, 2 números, 1 letra) ni de motocarro (3 números, 3 letras).";
     it.state = "listo";
     it.prev = await previous(d.placa);
   } catch (e) {
