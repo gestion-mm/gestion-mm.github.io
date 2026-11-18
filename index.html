@@ -6797,14 +6797,14 @@ function grafico(h){
         <text x="${x0 + bw / 2}" y="${H - 12}" text-anchor="middle">${MC[+x.k.slice(5) - 1]} ${x.k.slice(2, 4)}</text><text x="${x0 + bw / 2}" y="${ys(v) - 5}" text-anchor="middle" class="tiny">${fpor(v)}</text></g>`; }).join('')}</svg>`;
 }
 function vTotal(d){
-  const M = suma(Object.values(d.motos || {})), E = suma(Object.values(d.electro || {})), O = suma(puntosDe('otras', d).map(c => (d.otras || {})[c]).filter(Boolean)), T = suma([M, E, O]), tt = tot(T);
-  const fila = (n, r, cls = '') => `<tr class="${cls}"><td>${n}</td><td class="num">${r.n.toLocaleString('es-CO')}</td><td class="num"><b>${money(tot(r))}</b><div class="small">${fpor(pc(tot(r), tt))}</div></td>${ED.map(e => `<td class="num">${money(r[e])}<div class="small muted">${fpor(pc(r[e], tot(r)))}</div></td>`).join('')}<td class="num rojo">${money(atr(r))}<div class="small">${fpor(pc(atr(r), tot(r)))}</div></td></tr>`;
+  const M = suma(Object.values(d.motos || {})), E = suma(Object.values(d.electro || {})), O = suma(puntosDe('otras', d).map(c => (d.otras || {})[c]).filter(Boolean)), T = suma([M, E, O]), tt = tot(T), ME = suma([M, E]), tme = tot(ME);
+  const fila = (n, r, cls = '') => `<tr class="${cls}"><td>${n}</td><td class="num">${r.n.toLocaleString('es-CO')}</td><td class="num"><b>${money(tot(r))}</b><div class="small">${fpor(pc(tot(r), tme))}</div></td>${ED.map(e => `<td class="num">${money(r[e])}<div class="small muted">${fpor(pc(r[e], tot(r)))}</div></td>`).join('')}<td class="num rojo">${money(atr(r))}<div class="small">${fpor(pc(atr(r), tot(r)))}</div></td></tr>`;
   const ed = !!DB, oc = puntosDe('otras', d);
   const inpO = (c, f, v) => ed ? `<input class="ed-in" inputmode="numeric" data-eo="${esc(c)}" data-ef="${f}" value="${v ? (f === 'n' ? v : Math.round(v).toLocaleString('es-CO')) : ''}" aria-label="${esc(nombreDe('otras', c))} ${f}">` : money(v);
   const cont = +d.contable || 0, dif = cont ? cont - tt : null;
   return `<div class="panel" style="margin-top:12px"><h3 style="margin:0 0 8px">Total cartera · ${etqMes(SEL)}</h3>
     <div class="tbl-wrap"><table class="rec-tab ed-tab"><thead><tr><th></th><th class="num">Clientes</th><th class="num">T. cartera</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total atrasado</th></tr></thead>
-    <tbody>${fila('Motos', M)}${fila('Electro', E)}</tbody><tfoot>${fila('TOTAL CARTERA', T)}</tfoot></table></div></div>
+    <tbody>${fila('Motos', M)}${fila('Electro', E)}</tbody><tfoot>${fila('TOTAL CARTERA (Motos + Electro)', ME)}</tfoot></table></div></div>
     <div class="panel" style="margin-top:12px"><h3 style="margin:0 0 4px">La diferencia de cartera con el informe contable es:</h3>
     <p class="small muted" style="margin:0 0 8px">Carteras que no se cobran desde cartera pero que el contador sí suma. Brilla, Empresas y Tierralta salen solas del informe del sistema; Repuestos, Carbomax y Corbeta se escriben aquí; si un mes no las escribe, quedan en cero.</p>
     <div class="tbl-wrap"><table class="rec-tab ed-tab"><thead><tr><th>Cartera</th><th class="num">Clientes</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>
@@ -6812,7 +6812,7 @@ function vTotal(d){
     </tbody><tfoot><tr><td>TOTAL</td><td class="num">${O.n}</td>${ED.map(e => `<td class="num">${money(O[e])}</td>`).join('')}<td class="num">${money(tot(O))}</td></tr></tfoot></table></div></div>
     <div class="panel ed-cuadre ${dif == null ? '' : Math.abs(dif) < 1 ? 'ok' : 'mal'}" style="margin-top:12px">
       <div class="fgrid"><div class="field"><label for="ed-cont">Cartera total según el cierre contable (lo que envía el contador)</label><input id="ed-cont" class="money-in" inputmode="numeric" value="${cont ? Math.round(cont).toLocaleString('es-CO') : ''}" ${ed ? '' : 'disabled'}></div>
-      <div class="field"><label>Total de su informe</label><div class="ed-big">${money(tt)}</div></div></div>
+      <div class="field"><label>Total de su informe (Motos + Electro + otras carteras)</label><div class="ed-big">${money(tt)}</div></div></div>
       <p style="margin:8px 0 0">${dif == null ? '<span class="muted">Escriba el total del cierre contable para comprobar que cuadra.</span>' : Math.abs(dif) < 1 ? '<b class="okc">✓ Cuadra con el cierre contable.</b>' : `<b class="rojo">No cuadra: hay una diferencia de ${money(Math.abs(dif))}</b> (${dif > 0 ? 'el contador tiene más cartera que su informe; falta sumar alguna cartera' : 'su informe tiene más cartera que el cierre contable'}).`}</p></div>`;
 }
 /* ---------- Encargado como lo escribe Kenny (solo el primer nombre) y motos retenidas al corte ---------- */
