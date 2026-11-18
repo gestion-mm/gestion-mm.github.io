@@ -6808,7 +6808,7 @@ function bind(){
   // otras carteras
   root.querySelectorAll('[data-eo]').forEach(inp => inp.onchange = async () => {
     const c = inp.dataset.eo, f = inp.dataset.ef, v = Math.round(+inp.value.replace(/[^\d-]/g, '')) || 0;
-    const d = JSON.parse(JSON.stringify(MESD[SEL])); d.otras = d.otras || {}; d.otras[c] = d.otras[c] || vacia(); d.otras[c][f] = v;
+    const d = JSON.parse(JSON.stringify(MESD[SEL])); d.otras = d.otras || {}; d.otras[c] = d.otras[c] || vacia(); d.otras[c][f] = v; d.otrasV = 1;
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } });
   const ct = q('#ed-cont'); if (ct) ct.onchange = async () => { const d = JSON.parse(JSON.stringify(MESD[SEL])); d.contable = Math.round(+ct.value.replace(/\D/g, '')) || 0;
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } };
@@ -6828,10 +6828,11 @@ async function guardar(){
       const P = prepararSistema(CARGA), k = CARGA.mes, viejo = MESD[k] || {}, prev = anterior(k) || (meses().length ? MESD[meses()[meses().length - 1]] : null);
       // se conservan retenidas/embargo escritas; si el mes es nuevo se copian del mes anterior
       for (const l of ['motos', 'electro']) for (const [c, r] of Object.entries(P.res[l])) { const o = (viejo[l] || {})[c] || (prev && prev[l] ? prev[l][c] : null); if (o) { if (o.ret != null) r.ret = o.ret; if (l === 'motos' && o.emb != null) r.emb = o.emb; } }
-      const otras = {...((prev && prev.otras) || {}), ...(viejo.otras || {})};
+      // otras carteras: lo que no venga en el corte (ni lo haya escrito usted para este mes) queda en cero
+      const otras = {}; for (const [c] of OTRAS) otras[c] = vacia();
+      if (viejo.otrasV) Object.assign(otras, viejo.otras || {});
       for (const [c, r] of Object.entries(P.res.otras)) otras[c] = {n: r.n, xv: r.xv, d30: r.d30, d60: r.d60, d90: r.d90, m90: r.m90};
-      for (const c of ['BRILLA', 'EMPRESAS', 'TIERRALTA']) if (!P.res.otras[c] && otras[c] && !viejo.otras) delete otras[c];
-      await guardarMes(k, {motos: P.res.motos, electro: P.res.electro, otras, contable: viejo.contable || null, fuente: 'sistema', archivo: CARGA.nombre});
+      await guardarMes(k, {motos: P.res.motos, electro: P.res.electro, otras, otrasV: 1, contable: viejo.contable || null, fuente: 'sistema', archivo: CARGA.nombre});
       SEL = k; toast(`Cartera de ${etqMes(k).toLowerCase()} guardada.`);
     } else {
       const ks = new Set(); for (const L of Object.values(CARGA.lineas)) for (const p of Object.values(L)) Object.keys(p).forEach(k => ks.add(k));
@@ -7035,8 +7036,8 @@ async function llenarPlantillaC(zip, l, hasta){
     }
     // c) otras carteras del cuadro de diferencia (solo en el informe de Motos)
     const ot = MESD[hasta] && MESD[hasta].otras;
-    if (ot && l === 'motos') for (const [r] of G.filas) { const a = norm(valor(G.celdas.get('A' + r))); const c = Object.keys(ot).find(x => norm(x) === a || (a && norm(nombreDe('otras', x)).startsWith(a))); if (!c || a === 'TOTAL') continue;
-      const o = ot[c]; for (const [cc, v] of [['B', o.n], ['E', o.xv], ['G', o.d30], ['I', o.d60], ['K', o.d90], ['M', o.m90]]) { const x = celda(G, cc + r); if (x && !fx(x)) poner(G, x, v ? +v : 0); } }
+    if (ot && l === 'motos') for (const [r] of G.filas) { const a = norm(valor(G.celdas.get('A' + r))); if (!a || a === 'TOTAL') continue; const c = [...new Set([...OTRAS.map(x => x[0]), ...Object.keys(ot)])].find(x => norm(x) === a || norm(nombreDe('otras', x)).startsWith(a)); if (!c) continue;
+      const o = ot[c] || vacia(); for (const [cc, v] of [['B', o.n], ['E', o.xv], ['G', o.d30], ['I', o.d60], ['K', o.d90], ['M', o.m90]]) { const x = celda(G, cc + r); if (x && !fx(x)) poner(G, x, v ? +v : 0); } }
   }
   // 3) guardar: Excel recalcula todo al abrir
   for (const Hh of Object.values(H)) {
@@ -7098,6 +7099,10 @@ async function empezar(){
     const D = {};
     s.docs.forEach(d => { const x = d.data(); if (!x) return; if (d.id === '_edades_cfg') CFG = {cuentas: {}, nombres: {motos: {}, electro: {}, otras: {}}, ...x}; else if (d.id.startsWith('edades-')) D[x.mes || d.id.slice(7)] = x; });
     MESD = D; listo = true;
+    const delCorte = new Set(Object.values({...CUENTAS, ...(CFG.cuentas || {})}).filter(v => String(v).startsWith('otras|')).map(v => v.split('|')[1]));
+    for (const k of meses()) { const x = MESD[k], pv = anterior(k); if (x.fuente !== 'sistema' || x.otrasV || !x.otras) continue;
+      const o = {}; for (const [c] of OTRAS) o[c] = vacia(); for (const [c, r] of Object.entries(x.otras)) o[c] = !delCorte.has(c) && pv && pv.otras && JSON.stringify(pv.otras[c]) === JSON.stringify(r) ? vacia() : r;
+      guardarMes(k, {...x, otras: o, otrasV: 1}).catch(() => {}); }
     const m = q('#edad-main'); if (m && !m.hidden && !CARGA) render();
   }, () => { listo = true; render(); });
   render();
