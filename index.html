@@ -2335,7 +2335,7 @@ function openMoto(id){
       'Avalúo': cierre ? verAtras : (['Avalúo','En taller'].includes(st) || !!$('#f_avValorRetoma').value),
       'Taller': cierre ? verAtras : st === 'En taller',
       'Para la venta': venta,
-      'Retoma': cierre || st === 'En taller',
+      'Retoma': true,
       'Patios (embargo)': st === 'En patios (embargo)' || !!$('#f_ptMunicipio').value,
       'Abonos': (['En sala','Peritaje','Avalúo','En taller','Para la venta'].includes(st) && S.abonosOpen) || st === 'Recuperada por el cliente' || S.editAbonos.length > 0 || !!S.editDesc,
     };
@@ -5042,6 +5042,7 @@ window.MM = {
     for (const r of records()) {
       if (!r.fechaRecibo || r.fechaRecibo > d) continue;
       if (r.fechaSalida ? r.fechaSalida <= d : !PODER.has(r.estado)) continue;
+      if (r.retoma === 'Sí' && (!r.fechaRetoma || r.fechaRetoma <= d)) continue;
       const k = r.pdv || '', x = o[k] = o[k] || {ret: 0, emb: 0};
       if (r.estado === 'En patios (embargo)') x.emb++; else x.ret++;
     }
