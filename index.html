@@ -6758,7 +6758,7 @@ function vTotal(d){
     <div class="tbl-wrap"><table class="rec-tab ed-tab"><thead><tr><th></th><th class="num">Clientes</th><th class="num">T. cartera</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total atrasado</th></tr></thead>
     <tbody>${fila('Motos', M)}${fila('Electro', E)}${fila('Otras carteras (abajo)', O)}</tbody><tfoot>${fila('TOTAL CARTERA', T)}</tfoot></table></div></div>
     <div class="panel" style="margin-top:12px"><h3 style="margin:0 0 4px">La diferencia de cartera con el informe contable es:</h3>
-    <p class="small muted" style="margin:0 0 8px">Carteras que no se cobran desde cartera pero que el contador sí suma. Brilla, Empresas y Tierralta salen solas del informe del sistema; Repuestos, Carbomax y Corbeta se escriben aquí y se copian solas al mes siguiente.</p>
+    <p class="small muted" style="margin:0 0 8px">Carteras que no se cobran desde cartera pero que el contador sí suma. Brilla, Empresas y Tierralta salen solas del informe del sistema; Repuestos, Carbomax y Corbeta se escriben aquí; si un mes no las escribe, quedan en cero.</p>
     <div class="tbl-wrap"><table class="rec-tab ed-tab"><thead><tr><th>Cartera</th><th class="num">Clientes</th>${ED.map(e => `<th class="num">${EDN[e]}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>
       ${oc.map(c => { const r = (d.otras || {})[c] || vacia(); return `<tr><td><b>${esc(nombreDe('otras', c))}</b></td><td class="num">${inpO(c, 'n', r.n)}</td>${ED.map(e => `<td class="num">${inpO(c, e, r[e])}</td>`).join('')}<td class="num"><b>${money(tot(r))}</b></td></tr>`; }).join('')}
     </tbody><tfoot><tr><td>TOTAL</td><td class="num">${O.n}</td>${ED.map(e => `<td class="num">${money(O[e])}</td>`).join('')}<td class="num">${money(tot(O))}</td></tr></tfoot></table></div></div>
@@ -6767,13 +6767,143 @@ function vTotal(d){
       <div class="field"><label>Total de su informe</label><div class="ed-big">${money(tt)}</div></div></div>
       <p style="margin:8px 0 0">${dif == null ? '<span class="muted">Escriba el total del cierre contable para comprobar que cuadra.</span>' : Math.abs(dif) < 1 ? '<b class="okc">✓ Cuadra con el cierre contable.</b>' : `<b class="rojo">No cuadra: hay una diferencia de ${money(Math.abs(dif))}</b> (${dif > 0 ? 'el contador tiene más cartera que su informe; falta sumar alguna cartera' : 'su informe tiene más cartera que el cierre contable'}).`}</p></div>`;
 }
+/* ---------- Comisiones del mes: recaudo del mes × % según si bajó la mora y el (+) 90 ---------- */
+let RECD = {}, CCFG = null, CMES = {};
+// hoja del informe de edades -> hoja del Excel de recaudos
+const REC_MAP = {
+  motos: {CAU1: 'CAU', TIE: 'TIE', PTO: 'PTO', AYA: 'AYA', CER1: 'CER1', CER2: 'CER2', MAJ: 'MAJ', TRON: 'TRON', PLAN: 'PLA', MBANO: 'MON', CARG: 'CARG', SINCE: 'SINC', FINAN: 'FINAN', LOR: 'LORI', EXT: 'EXT', APAR: 'LA APAR', PUENUEVO: 'PUENUE', CASAMONT: 'CASAMON', NIU: 'MED'},
+  electro: {TIE: 'TIE', 'CASA PTO': 'CASPUE', 'CASA AYA': 'CASAYA', MAJ: 'MAJ', TRON: 'TRON', PLAN: 'PLA', MBANO: 'MON', CAU21: 'CAU', CASMAJ: 'CASMAJ', PUER: 'PUERTO', EMPLE: 'EMPLE', CASAPART: 'CASAPAR', CASMON: 'CASAMON', PUENUE: 'PUENUE'}
+};
+// carteras que en septiembre de 2026 no comisionaron (nuevas o sin cobro); usted las puede activar
+const CCFG_BASE = {gab: {motos: 500000, electro: 300000}, tope: 50000, pocos: 100, fijo: {alto: 50000, bajo: 40000},
+  tasas: {motos: [0.4, 0.3], electro: [0.5, 0.4], especial: {'motos|CER1': [0.5, 0.4], 'motos|CER2': [0.5, 0.4]}},
+  excl: {'motos|NIU': 1, 'motos|APAR': 1, 'motos|PUENUEVO': 1, 'motos|CASAMONT': 1, 'motos|CASTANTIO': 1, 'motos|CASTISUCRE': 1, 'motos|CASTCOR': 1, 'electro|TIE': 1, 'electro|CASMAJ': 1, 'electro|PUENUE': 1, 'electro|EMPLE': 1}};
+const ccfg = () => { const c = CCFG || {}; return {...CCFG_BASE, ...c, gab: {...CCFG_BASE.gab, ...(c.gab || {})}, fijo: {...CCFG_BASE.fijo, ...(c.fijo || {})}, tasas: {...CCFG_BASE.tasas, ...(c.tasas || {})}, excl: {...CCFG_BASE.excl, ...(c.excl || {})}}; };
+function recaudoDe(l, c, k){
+  const [y, m] = k.split('-').map(Number), d = RECD[`${l}-${y}`]; if (!d || !d.puntos) return null;
+  const cand = [(ccfg().recMap || {})[l + '|' + c], REC_MAP[l][c], c].filter(Boolean), ks = Object.keys(d.puntos);
+  for (const x of cand) { const hit = ks.find(z => norm(z) === norm(x)); if (hit && d.puntos[hit][String(m)]) return sum(d.puntos[hit][String(m)]); }
+  return null;
+}
+const nomAsesor = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/(^|\s)\S/g, x => x.toUpperCase());
+const nomCartera = (l, c) => { const n = nombreDe(l, c).replace(/\s*\(.*\)\s*/, ''); return (l === 'motos' ? 'MOTO ' + n : /^(casanova|electro)/i.test(n) ? n : 'ELECTRO ' + n).toUpperCase(); };
+function comisiones(k){
+  const d = MESD[k], prev = anterior(k), C = ccfg(), mer = (CMES[k] || {}).merito || {}, filas = [];
+  if (!d || !prev) return {filas, falta: !prev};
+  for (const l of ['motos', 'electro']) for (const c of puntosDe(l, d)) {
+    const r = d[l] && d[l][c]; if (!r) continue;
+    const p = prev[l] && prev[l][c], enc = r.enc || (p && p.enc) || '', key = l + '|' + c;
+    const sinAsesor = !enc || /sin asignar/i.test(enc), excl = !!C.excl[key];
+    const bajo = p ? atr(p) - atr(r) : null, b90 = p ? (+p.m90 || 0) - (+r.m90 || 0) : null;
+    const rec = recaudoDe(l, c, k), [hi, lo] = C.tasas.especial[key] || C.tasas[l], gab = C.gab[l];
+    const fijo = l === 'electro' && (+r.n || 0) < C.pocos;
+    let est, motivo;
+    if (bajo == null) { est = 'no'; motivo = 'No hay mes anterior para comparar'; }
+    else if (bajo > 0 && b90 > 0) { est = 'alto'; motivo = 'Bajó la mora y bajó el (+) 90'; }
+    else if (bajo > 0) { est = 'bajo'; motivo = 'Bajó la mora, pero el (+) 90 no bajó'; }
+    else if (-bajo <= gab) { est = 'bajo'; motivo = bajo === 0 ? 'La mora quedó igual' : `Subió ${money(-bajo)}, dentro de la gabela de ${money(gab)}`; }
+    else if (mer[key] && -bajo - gab <= C.tope) { est = 'bajo'; motivo = `Subió ${money(-bajo)}; comisiona por mérito (pasó la gabela por ${money(-bajo - gab)})`; }
+    else { est = 'no'; motivo = `Subió ${money(-bajo)}: pasó la gabela de ${money(gab)}`; }
+    const exceso = bajo != null && bajo < 0 ? -bajo - gab : 0, puedeMerito = exceso > 0 && exceso <= C.tope;
+    const tasa = est === 'alto' ? hi : est === 'bajo' ? lo : 0;
+    const valor = est === 'no' || sinAsesor || excl ? 0 : fijo ? (est === 'alto' ? C.fijo.alto : C.fijo.bajo) : rec == null ? 0 : Math.round(rec * tasa / 100);
+    filas.push({l, c, key, enc, asesor: sinAsesor ? '' : nomAsesor(enc), sinAsesor, excl, n: +r.n || 0, rec, bajo, b90, est, motivo, tasa, fijo, valor, puedeMerito, merito: !!mer[key], exceso});
+  }
+  return {filas};
+}
+function vComision(){
+  const k = SEL, {filas, falta} = comisiones(k), C = ccfg();
+  if (falta) return `<p class="empty" style="margin-top:14px">Para calcular las comisiones de ${etqMes(k).toLowerCase()} se necesita la cartera del mes anterior.</p>`;
+  const act = filas.filter(f => !f.sinAsesor && !f.excl), fuera = filas.filter(f => f.sinAsesor || f.excl);
+  const grupos = []; for (const f of act) { let g = grupos.find(x => x.a === f.asesor); if (!g) grupos.push(g = {a: f.asesor, f: []}); g.f.push(f); }
+  const total = sum(act.map(f => f.valor)), sinRec = act.filter(f => f.rec == null && !f.fijo);
+  const pctT = f => f.est === 'no' ? '—' : f.fijo ? 'Fijo' : String(f.tasa).replace('.', ',') + '%';
+  const fila = (f, i) => `<tr><td>${i ? '' : `<b>${esc(f.asesor)}</b>`}</td><td><b>${esc(nomCartera(f.l, f.c))}</b><div class="small muted">${esc(f.motivo)}</div>
+      ${f.puedeMerito && DB ? `<label class="small" style="display:inline-flex;gap:4px;align-items:center;margin-top:4px"><input type="checkbox" data-cmer="${esc(f.key)}" ${f.merito ? 'checked' : ''}> Comisionar por mérito (pasó por ${money(f.exceso)})</label>` : ''}</td>
+    <td class="num">${f.rec == null ? '<span class="rojo small">Sin recaudo</span>' : money(f.rec)}</td>
+    <td class="num okc">${f.bajo > 0 ? money(f.bajo) : ''}</td><td class="num rojo">${f.bajo < 0 ? money(-f.bajo) : ''}</td>
+    <td class="num ${f.b90 > 0 ? 'okc' : f.b90 < 0 ? 'rojo' : ''}">${f.b90 == null ? '—' : f.b90 > 0 ? '▼ ' + money(f.b90) : f.b90 < 0 ? '▲ ' + money(-f.b90) : 'igual'}</td>
+    <td class="num">${pctT(f)}</td><td class="num"><b>${f.valor ? money(f.valor) : '0'}</b></td><td class="num">${f.n.toLocaleString('es-CO')}</td>
+    <td>${DB ? `<button class="btn small" data-cexcl="${esc(f.key)}" title="Sacar esta cartera de las comisiones" aria-label="Sacar de comisiones">Quitar</button>` : ''}</td></tr>`;
+  return `<div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="n">${money(total)}</div><div class="l">Comisiones de ${etqMes(k)}</div><div class="small muted">${grupos.length} asesores · ${act.length} carteras</div></div>
+      <div class="tile"><div class="n">${act.filter(f => f.valor).length} de ${act.length}</div><div class="l">Carteras que comisionan</div></div>
+      <div class="tile"><div class="n">${money(sum(act.map(f => f.rec || 0)))}</div><div class="l">Recaudo del mes de esas carteras</div></div>
+    </div>
+    ${sinRec.length ? `<div class="banner" style="margin-top:10px">No encontré el recaudo de ${etqMes(k).toLowerCase()} de: ${sinRec.map(f => esc(nomCartera(f.l, f.c))).join(', ')}. Revise que el recaudo del mes esté cargado en Informes → Recaudos.</div>` : ''}
+    <div class="nov-actions" style="margin-top:10px"><button class="btn primary" id="cm-xls">Descargar comisiones en Excel</button></div>
+    <div class="tbl-wrap" style="margin-top:10px"><table class="rec-tab ed-tab"><thead><tr><th>Cobrador</th><th>Cartera</th><th class="num">Recaudo</th><th class="num">Bajó</th><th class="num">Subió</th><th class="num">(+) 90</th><th class="num">%</th><th class="num">Comisión</th><th class="num">Clientes</th><th></th></tr></thead>
+    <tbody>${grupos.map(g => g.f.map(fila).join('') + `<tr class="car-yo"><td></td><td><b>Total ${esc(g.a)}</b></td><td class="num">${money(sum(g.f.map(f => f.rec || 0)))}</td><td colspan="4"></td><td class="num"><b>${money(sum(g.f.map(f => f.valor)))}</b></td><td class="num">${sum(g.f.map(f => f.n)).toLocaleString('es-CO')}</td><td></td></tr>`).join('') || '<tr><td colspan="10" class="empty">No hay carteras con asesor este mes.</td></tr>'}</tbody>
+    <tfoot><tr><td></td><td>TOTAL COMISIONES</td><td class="num">${money(sum(act.map(f => f.rec || 0)))}</td><td colspan="4"></td><td class="num">${money(total)}</td><td></td><td></td></tr></tfoot></table></div>
+    ${fuera.length ? `<details class="hist-box" style="margin-top:10px"><summary class="btn small">Carteras que no entran en comisiones (${fuera.length})</summary><div class="panel" style="margin-top:8px"><ul style="margin:0;padding-left:18px">
+      ${fuera.map(f => `<li style="margin:4px 0">${esc(nomCartera(f.l, f.c))} <span class="small muted">· ${f.sinAsesor ? 'sin asesor en el informe' : esc(f.asesor) + ' · usted la sacó'}</span>${f.excl && DB ? ` <button class="btn small" data-cincl="${esc(f.key)}">Sí comisiona</button>` : ''}</li>`).join('')}</ul></div></details>` : ''}
+    <details class="hist-box" style="margin-top:10px"><summary class="btn small">Reglas de comisión</summary><div class="panel" style="margin-top:8px">
+      <ul class="small" style="margin:0 0 10px;padding-left:18px;line-height:1.6">
+        <li>"Bajó / subió" es el <b>total atrasado</b> (1 a 30 + 31 a 60 + 61 a 90 + más de 90) frente al mes anterior. La comisión se paga sobre <b>todo lo recaudado</b> en el mes.</li>
+        <li><b>Motos:</b> bajó la mora y el (+) 90 → <b>${C.tasas.motos[0]}%</b>; bajó la mora pero no el (+) 90, o subió dentro de la gabela → <b>${C.tasas.motos[1]}%</b>. Cereté 1 y Cereté 2: <b>0,5%</b> y <b>0,4%</b>.</li>
+        <li><b>Electro:</b> <b>${String(C.tasas.electro[0]).replace('.', ',')}%</b> y <b>${String(C.tasas.electro[1]).replace('.', ',')}%</b>. Las de menos de ${C.pocos} clientes ganan un fijo: <b>${money(C.fijo.alto)}</b> si bajó todo, <b>${money(C.fijo.bajo)}</b> si no bajó el (+) 90.</li>
+        <li>Si la mora sube más que la gabela, no comisiona. Si se pasó por poco (hasta el tope de mérito), usted puede marcar "Comisionar por mérito" en esa cartera y ese mes.</li></ul>
+      ${DB ? `<div class="fgrid">
+        <div class="field"><label for="cm-gm">Gabela Motos</label><input id="cm-gm" class="money-in" inputmode="numeric" value="${C.gab.motos.toLocaleString('es-CO')}"></div>
+        <div class="field"><label for="cm-ge">Gabela Electro</label><input id="cm-ge" class="money-in" inputmode="numeric" value="${C.gab.electro.toLocaleString('es-CO')}"></div>
+        <div class="field"><label for="cm-tope">Tope para comisionar por mérito</label><input id="cm-tope" class="money-in" inputmode="numeric" value="${C.tope.toLocaleString('es-CO')}"></div></div>` : ''}
+    </div></details>`;
+}
+async function guardarCcfg(c){ await col().doc('_comision_cfg').set(c); CCFG = c; }
+function bindComision(){
+  const root = q('#edad-main');
+  root.querySelectorAll('[data-cmer]').forEach(x => x.onchange = async () => { const k = SEL, d = JSON.parse(JSON.stringify(CMES[k] || {merito: {}})); d.merito = d.merito || {};
+    if (x.checked) d.merito[x.dataset.cmer] = true; else delete d.merito[x.dataset.cmer]; d.mes = k;
+    try { await col().doc('comision-' + k).set(d); CMES[k] = d; render(); } catch (e) { toast('No se pudo guardar.'); } });
+  const camb = async (fn) => { const c = JSON.parse(JSON.stringify(CCFG || {})); fn(c); try { await guardarCcfg(c); render(); } catch (e) { toast('No se pudo guardar.'); } };
+  root.querySelectorAll('[data-cexcl]').forEach(b => b.onclick = () => camb(c => { c.excl = {...(c.excl || {}), [b.dataset.cexcl]: 1}; }));
+  root.querySelectorAll('[data-cincl]').forEach(b => b.onclick = () => camb(c => { c.excl = {...(c.excl || {}), [b.dataset.cincl]: 0}; }));
+  const num = id => Math.round(+(q(id).value || '').replace(/\D/g, '')) || 0;
+  const gm = q('#cm-gm'); if (gm) gm.onchange = () => camb(c => { c.gab = {...(c.gab || {}), motos: num('#cm-gm')}; });
+  const ge = q('#cm-ge'); if (ge) ge.onchange = () => camb(c => { c.gab = {...(c.gab || {}), electro: num('#cm-ge')}; });
+  const tp = q('#cm-tope'); if (tp) tp.onchange = () => camb(c => { c.tope = num('#cm-tope'); });
+  const xb = q('#cm-xls'); if (xb) xb.onclick = descargarComision;
+}
+async function descargarComision(){
+  if (typeof XLSX === 'undefined') return toast('No se pudo cargar el lector de Excel. Recargue la página.');
+  const k = SEL, {filas} = comisiones(k), act = filas.filter(f => !f.sinAsesor && !f.excl), [y, m] = k.split('-').map(Number);
+  const grupos = []; for (const f of act) { let g = grupos.find(x => x.a === f.asesor); if (!g) grupos.push(g = {a: f.asesor, f: []}); g.f.push(f); }
+  const ws = {}, put = (ref, cell) => { ws[ref] = cell; };
+  put('A1', {t: 's', v: `COMISIONES ${MESES[m - 1].toUpperCase()} ${y}`});
+  ['COBRADOR', 'CARTERAS', 'RECAUDO', 'BAJO', 'SUBIO', 'COMISION', 'Nº DE CLIENTES', 'Nº TOTAL CLIENTES', 'COMISION TOTAL'].forEach((h, i) => put(XLSX.utils.encode_cell({r: 1, c: i}), {t: 's', v: h}));
+  let r = 3; const totRows = [];
+  for (const g of grupos) {
+    const r0 = r;
+    g.f.forEach((f, i) => {
+      if (!i) put('A' + r, {t: 's', v: g.a.toUpperCase()});
+      put('B' + r, {t: 's', v: nomCartera(f.l, f.c)});
+      if (f.rec != null) put('C' + r, {t: 'n', v: f.rec, z: '#,##0'});
+      if (f.bajo > 0) put('D' + r, {t: 'n', v: f.bajo, z: '#,##0'});
+      if (f.bajo < 0) put('E' + r, {t: 'n', v: -f.bajo, z: '#,##0'});
+      if (f.est === 'no') put('F' + r, {t: 'n', v: 0, z: '#,##0'});
+      else if (f.fijo) put('F' + r, {t: 'n', v: f.valor, z: '#,##0'});
+      else put('F' + r, {t: 'n', f: `C${r}*${String(f.tasa)}%`, v: f.valor, z: '#,##0'});
+      put('G' + r, {t: 'n', v: f.n});
+      if (f.merito && f.est !== 'no') put('J' + r, {t: 's', v: 'Comisiona por mérito'});
+      r++;
+    });
+    put('H' + r0, {t: 'n', f: `SUM(G${r0}:G${r - 1})`, v: sum(g.f.map(f => f.n))});
+    put('I' + r0, {t: 'n', f: `SUM(F${r0}:F${r - 1})`, v: sum(g.f.map(f => f.valor)), z: '#,##0'}); totRows.push('I' + r0);
+  }
+  put('H' + r, {t: 's', v: 'TOTAL'}); put('I' + r, {t: 'n', f: totRows.length ? totRows.join('+') : '0', v: sum(act.map(f => f.valor)), z: '#,##0'});
+  ws['!ref'] = `A1:J${r}`; ws['!cols'] = [{wch: 16}, {wch: 26}, {wch: 14}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 14}, {wch: 16}, {wch: 16}, {wch: 20}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'COMISION');
+  const nombre = `COMISIONES ${MESES[m - 1].toUpperCase()} ${y}.xlsx`, blob = new Blob([XLSX.write(wb, {type: 'array', bookType: 'xlsx'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  try { if (DL) await DL.save({filename: nombre, data: blob}); else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; a.click(); } toast('Excel de comisiones descargado.'); }
+  catch (e) { if (e && e.code !== 'declined') toast('No se pudo descargar.'); }
+}
 function render(){
   const root = q('#edad-main'); if (!root) return;
   if (!listo) { root.innerHTML = '<p class="empty">Cargando cartera…</p>'; return; }
   const ks = meses(); if (!SEL || !MESD[SEL]) SEL = ks[ks.length - 1] || null;
   const d = SEL ? MESD[SEL] : null;
   root.innerHTML = `<div class="rec-top"><div><h2>Cartera por edades</h2><p class="sub">Su informe mensual de cartera de Motos y Electro por punto, con la diferencia frente al cierre contable. Solo usted lo ve.</p></div>
-      <div class="rec-ctrl"><div class="seg" role="tablist" aria-label="Vista">${[['motos', 'Motos'], ['electro', 'Electro'], ['total', 'Total y diferencia']].map(([k, n]) => `<button role="tab" aria-selected="${k === VISTA}" data-ev="${k}">${n}</button>`).join('')}</div>
+      <div class="rec-ctrl"><div class="seg" role="tablist" aria-label="Vista">${[['motos', 'Motos'], ['electro', 'Electro'], ['total', 'Total y diferencia'], ['com', 'Comisiones']].map(([k, n]) => `<button role="tab" aria-selected="${k === VISTA}" data-ev="${k}">${n}</button>`).join('')}</div>
       ${ks.length ? `<select id="ed-mes" aria-label="Mes">${ks.slice().reverse().map(k => `<option value="${k}" ${k === SEL ? 'selected' : ''}>${etqMes(k)}</option>`).join('')}</select>` : ''}</div></div>
     ${DB ? `<div class="rec-acc"><label class="btn primary" for="ed-f-sis">Subir informe de edades del sistema</label><input type="file" id="ed-f-sis" accept=".xlsx,.xls,.csv" hidden>
       ${d && (PLC.motos || PLC.electro) ? '<button class="btn primary" id="ed-mios">Descargar mis Excel</button>' : ''}${d ? `<button class="btn" id="ed-xls">${PLC.motos || PLC.electro ? 'Excel resumen' : 'Descargar Excel'}</button>` : ''}
@@ -6786,7 +6916,7 @@ function render(){
     ${CARGA ? vCarga() : ''}
     ${!d ? `<p class="empty" style="margin-top:14px">Todavía no hay cartera guardada. Suba el informe de edades del sistema (RPT_CARTERA_EDADES_CORTE) del cierre del mes, o importe sus Excel de INFORME CARTERA MOTOS y ELECTRO para traer todo el histórico.</p>` :
       `${d.fuente === 'sistema' ? `<p class="small muted" style="margin:10px 0 0">Corte de ${etqMes(SEL).toLowerCase()} · tomado de ${esc(d.archivo || 'el informe del sistema')}</p>` : `<p class="small muted" style="margin:10px 0 0">${etqMes(SEL)} · tomado de sus Excel de cartera</p>`}
-      ${VISTA === 'total' ? vTotal(d) : vLinea(VISTA, d)}`}`;
+      ${VISTA === 'total' ? vTotal(d) : VISTA === 'com' ? vComision() : vLinea(VISTA, d)}`}`;
   bind();
 }
 function bind(){
@@ -6812,6 +6942,7 @@ function bind(){
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } });
   const ct = q('#ed-cont'); if (ct) ct.onchange = async () => { const d = JSON.parse(JSON.stringify(MESD[SEL])); d.contable = Math.round(+ct.value.replace(/\D/g, '')) || 0;
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } };
+  bindComision();
   if (!CARGA) return;
   q('#ed-cancelar').onclick = () => { CARGA = null; render(); };
   q('#ed-guardar').onclick = guardar;
@@ -7096,8 +7227,8 @@ async function empezar(){
   if (!DB) { listo = true; render(); return; }
   cargarPlantillasC().then(() => { const m = q('#edad-main'); if (m && !m.hidden && !CARGA) render(); });
   DB.collection('recaudo').onSnapshot(s => {
-    const D = {};
-    s.docs.forEach(d => { const x = d.data(); if (!x) return; if (d.id === '_edades_cfg') CFG = {cuentas: {}, nombres: {motos: {}, electro: {}, otras: {}}, ...x}; else if (d.id.startsWith('edades-')) D[x.mes || d.id.slice(7)] = x; });
+    const D = {}; RECD = {}; CMES = {};
+    s.docs.forEach(d => { const x = d.data(); if (!x) return; if (/^(motos|electro)-\d{4}$/.test(d.id)) RECD[d.id] = x; else if (d.id === '_comision_cfg') CCFG = x; else if (d.id.startsWith('comision-')) CMES[d.id.slice(9)] = x; else if (d.id === '_edades_cfg') CFG = {cuentas: {}, nombres: {motos: {}, electro: {}, otras: {}}, ...x}; else if (d.id.startsWith('edades-')) D[x.mes || d.id.slice(7)] = x; });
     MESD = D; listo = true;
     const delCorte = new Set(Object.values({...CUENTAS, ...(CFG.cuentas || {})}).filter(v => String(v).startsWith('otras|')).map(v => v.split('|')[1]));
     for (const k of meses()) { const x = MESD[k], pv = anterior(k); if (x.fuente !== 'sistema' || x.otrasV || !x.otras) continue;
