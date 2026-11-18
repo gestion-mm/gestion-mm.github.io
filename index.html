@@ -6813,7 +6813,10 @@ function comisiones(k){
 }
 function vComision(){
   const k = SEL, {filas, falta} = comisiones(k), C = ccfg();
-  if (falta) return `<p class="empty" style="margin-top:14px">Para calcular las comisiones de ${etqMes(k).toLowerCase()} se necesita la cartera del mes anterior.</p>`;
+  if (falta) {
+    if ((PLC.motos || PLC.electro) && DB && TRAER !== k) { TRAER = k; setTimeout(() => traerAnterior(k), 0); }
+    return `<p class="empty" style="margin-top:14px">${TRAER === k && TRAYENDO ? `Trayendo ${etqMes(mesAntes(k)).toLowerCase()} de sus Excel de cartera para comparar…` : `Para calcular las comisiones de ${etqMes(k).toLowerCase()} se necesita la cartera de ${etqMes(mesAntes(k)).toLowerCase()}. ${PLC.motos || PLC.electro ? '<button class="btn small" id="cm-traer">Traerla de mis Excel</button>' : 'Suba sus Excel en "Mis plantillas de Excel" o el corte del sistema de ese mes.'}`}</p>`;
+  }
   const act = filas.filter(f => !f.sinAsesor && !f.excl), fuera = filas.filter(f => f.sinAsesor || f.excl);
   const grupos = []; for (const f of act) { let g = grupos.find(x => x.a === f.asesor); if (!g) grupos.push(g = {a: f.asesor, f: []}); g.f.push(f); }
   const total = sum(act.map(f => f.valor)), sinRec = act.filter(f => f.rec == null && !f.fijo);
@@ -6849,6 +6852,24 @@ function vComision(){
         <div class="field"><label for="cm-tope">Tope para comisionar por mérito</label><input id="cm-tope" class="money-in" inputmode="numeric" value="${C.tope.toLocaleString('es-CO')}"></div></div>` : ''}
     </div></details>`;
 }
+let TRAER = null, TRAYENDO = false;
+const mesAntes = k => { const [y, m] = k.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${pad(m - 1)}`; };
+// trae de los Excel guardados como plantilla la fila del mes anterior de cada punto (para comparar si bajó o subió)
+async function traerAnterior(k){
+  const pk = mesAntes(k); TRAYENDO = true; render();
+  try {
+    const files = [];
+    for (const l of ['motos', 'electro']) { if (!PLC[l]) continue; const meta = PLC[l]; let b64 = '';
+      for (let i = 0; i < meta.n; i++) { const d = await DB.collection('plantillas').doc(`cartera-${l}-${i}`).get(); if (!d.exists) throw new Error('incompleta'); b64 += d.data().b64; }
+      const bin = atob(b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      files.push(new File([u8], `INFORME CARTERA ${l.toUpperCase()}.xlsx`)); }
+    const C = await leerHistorico(files), d = {fuente: 'excel', archivo: 'sus Excel de cartera'};
+    for (const l of ['motos', 'electro']) { const pts = {}; for (const [c, p] of Object.entries(C.lineas[l] || {})) if (p[pk]) pts[c] = p[pk]; if (Object.keys(pts).length) d[l] = pts; }
+    if (!d.motos && !d.electro) { toast(`No encontré ${etqMes(pk).toLowerCase()} en sus Excel de cartera.`); }
+    else if (!MESD[pk]) { await guardarMes(pk, d); toast(`Listo: traje ${etqMes(pk).toLowerCase()} de sus Excel para comparar.`); }
+  } catch (e) { console.error(e); toast('No pude leer sus Excel de cartera. Súbalos de nuevo en "Mis plantillas de Excel".'); }
+  TRAYENDO = false; render();
+}
 async function guardarCcfg(c){ await col().doc('_comision_cfg').set(c); CCFG = c; }
 function bindComision(){
   const root = q('#edad-main');
@@ -6863,6 +6884,7 @@ function bindComision(){
   const ge = q('#cm-ge'); if (ge) ge.onchange = () => camb(c => { c.gab = {...(c.gab || {}), electro: num('#cm-ge')}; });
   const tp = q('#cm-tope'); if (tp) tp.onchange = () => camb(c => { c.tope = num('#cm-tope'); });
   const xb = q('#cm-xls'); if (xb) xb.onclick = descargarComision;
+  const tr = q('#cm-traer'); if (tr) tr.onclick = () => traerAnterior(SEL);
 }
 async function descargarComision(){
   if (typeof XLSX === 'undefined') return toast('No se pudo cargar el lector de Excel. Recargue la página.');
