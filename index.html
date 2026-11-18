@@ -1948,7 +1948,7 @@ function vMotos(all){
     ${S.downloads ? '<button class="btn" id="csvMotos">Descargar CSV</button>' : ''}
   </div>
   ${S.f.corte ? (() => { const pp = {}; rows.forEach(r => { const k = r.pdv || 'Sin punto', x = pp[k] = pp[k] || {n: 0, e: 0}; x.n++; if (r.estado === 'En patios (embargo)') x.e++; }); const emb = rows.filter(r => r.estado === 'En patios (embargo)').length;
-    return `<div class="panel" style="margin:0 0 12px;padding:12px 14px"><p style="margin:0 0 6px"><b>${rows.length}</b> motos afectaban la cartera el <b>${fd(S.f.corte)}</b>: <b>${rows.length - emb}</b> retenidas y <b>${emb}</b> en patios (embargo). <span class="muted small">No cuentan las que ya habían salido ni las retomadas hasta ese día.</span></p>
+    return `<div class="panel" style="margin:0 0 12px;padding:12px 14px"><p style="margin:0 0 6px"><b>${rows.length}</b> motos afectaban la cartera el <b>${fd(S.f.corte)}</b>: <b>${rows.length - emb}</b> retenidas y <b>${emb}</b> en patios (embargo). <span class="muted small">No cuentan las que ya habían salido ni las retomadas hasta ese día.</span></p>${(() => { const tot = (S.f.borradas ? [] : records()).filter(r => retenidaAl(r, S.f.corte) && (!S.f.pdv || sinTilde(r.pdv||'').toUpperCase()===sinTilde(S.f.pdv).toUpperCase())).length; return tot > rows.length ? `<p class="banner" style="margin:6px 0">Ojo: en total son <b>${tot}</b>${S.f.pdv ? ' en este punto' : ''}. <b>${tot - rows.length}</b> no se ven porque tiene otro filtro puesto (año, estado, búsqueda o "por revisar"). <button class="btn small" id="fCorteSolo">Ver todas las del corte</button></p>` : ''; })()}
       <div class="small" style="display:flex;flex-wrap:wrap;gap:6px 14px">${Object.entries(pp).sort((a, b) => b[1].n - a[1].n).map(([k, x]) => `<span><b>${esc(k)}</b>: ${x.n - x.e}${x.e ? ` + ${x.e} en patios` : ''}</span>`).join('')}</div></div>`; })() : ''}
   ${S.fuzzy ? `<div class="banner" style="margin:0 0 10px">No hay ninguna moto con exactamente "${esc(S.f.text)}". Estas tienen un nombre parecido:</div>` : ''}
   ${nAbon != null ? `<p style="margin:0 0 10px"><b>${rows.length}</b> motos en sala · de ellas, <b>${nAbon}</b> abonando <span class="chip st-abono">abonando</span></p>` : ''}
@@ -2166,6 +2166,7 @@ function bindView(){
   on('fRep','onchange', e => { S.f.repetidas = e.target.checked; S.f.page=0; render(); });
   on('fCorte','onchange', e => { S.f.corte = e.target.value; S.f.page=0; render(); });
   on('fCorteX','onclick', () => { S.f.corte = ''; S.f.page=0; render(); });
+  on('fCorteSolo','onclick', () => { S.f = {...S.f, estado: '', year: '', text: '', revisar: false, repetidas: false, desc: false, page: 0}; render(); });
   on('fDel','onchange', e => { S.f.borradas = e.target.checked; S.f.page=0; render(); });
   on('pgPrev','onclick', () => { S.f.page--; render(); });
   on('pgNext','onclick', () => { S.f.page++; render(); });
