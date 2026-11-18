@@ -3529,7 +3529,7 @@ function abrirDesdeBell(id, tipo){
    Estados: En sala → (retoma aprobada por el jefe) → Para la venta → Vendido
             En sala → Recuperado por el cliente · cualquiera en poder → Chatarra
    ===================================================================== */
-var E = {docs: {}, cargado: false, f: {text: '', estado: '', pdv: ''}, edit: null, fotos: [], vistas: {}};
+var E = {docs: {}, cargado: false, f: {text: '', estado: '', pdv: '', corte: ''}, edit: null, fotos: [], vistas: {}};
 const E_PLAZO = 15;
 const E_ESTADOS = ['En sala', 'Para la venta', 'Vendido', 'Recuperado por el cliente', 'Chatarra'];
 const E_PODER = new Set(['En sala', 'Para la venta']);
@@ -3547,6 +3547,10 @@ const eDeudaTotal = r => Math.max(0, +r.capital || 0);   // saldo total del cré
 const eRetoma = r => +r.retAprobado || +r.retValor || 0;
 const eSaldo = r => Math.max(0, eDeudaTotal(r) - eRetoma(r));
 const ePideNotSal = r => eSaldo(r) > 0 && r.scEstado !== 'Pagó el saldo: paz y salvo' && r.scEstado !== 'Saldo pequeño: no se cobra';
+// se retomó (se bajó del sistema): tiene fecha de retoma, o la retoma fue aprobada
+const eRetomadoAl = (r, d) => r.fechaRetoma ? r.fechaRetoma <= d : (r.retEstado === 'Aprobado' && String(r.retAprobadoEn || '').slice(0, 10) <= d);
+// estaba retenido ese día y todavía no se había retomado (sigue afectando la cartera)
+const eRetenidoAl = (r, d) => !!r.fechaRecibo && r.fechaRecibo <= d && (r.fechaSalida ? r.fechaSalida > d : E_PODER.has(r.estado)) && !eRetomadoAl(r, d);
 const eVencido = r => r.estado === 'En sala' && !!r.fechaRecibo && daysBetween(r.fechaRecibo, todayISO()) >= E_PLAZO && r.retEstado !== 'Pendiente';
 const eRetPend = r => r.estado === 'En sala' && r.retEstado === 'Pendiente';
 const eActivo = r => r.estado === 'Vendido' && /USO INTERNO|INVERSIONES\s+MOTOS|\bMYM\b|\bM\s?&\s?M\b/i.test(r.comprador || '');
@@ -3581,7 +3585,7 @@ function eRender(){
   const venc = all.filter(eVencido).sort((a, b) => a.fechaRecibo.localeCompare(b.fechaRecibo));
   const pend = all.filter(eRetPend);
   const f = E.f, txt = nid(f.text);
-  const lista = all.filter(r => (!f.estado || (f.estado === '_venc' ? eVencido(r) : f.estado === '_ret' ? eRetPend(r) : f.estado === '_act' ? eActivo(r) : f.estado === 'Vendido' ? r.estado === 'Vendido' && !eActivo(r) : r.estado === f.estado)) && (!f.pdv || r.pdv === f.pdv)
+  const lista = all.filter(r => (!f.corte || eRetenidoAl(r, f.corte)) && (!f.estado || (f.estado === '_venc' ? eVencido(r) : f.estado === '_ret' ? eRetPend(r) : f.estado === '_act' ? eActivo(r) : f.estado === 'Vendido' ? r.estado === 'Vendido' && !eActivo(r) : r.estado === f.estado)) && (!f.pdv || r.pdv === f.pdv)
     && (!txt || nid([r.deudor, r.serial, r.referencia, r.marca, r.tipo, r.comprador, r.numero].join(' ')).includes(txt)))
     .sort((a, b) => (+b.numero || 0) - (+a.numero || 0));
   const pdvs = [...new Set(all.map(r => r.pdv).filter(Boolean))].sort();
@@ -3598,17 +3602,25 @@ function eRender(){
       <input type="search" id="eBuscar" placeholder="Buscar por deudor, referencia, comprador…" value="${esc(f.text)}" aria-label="Buscar">
       <select id="eEstado" aria-label="Estado"><option value="">Todos los estados</option>${E_ESTADOS.map(s => `<option ${s === f.estado ? 'selected' : ''}>${s}</option>`).join('')}<option value="_venc" ${f.estado === '_venc' ? 'selected' : ''}>Con ${E_PLAZO} días o más en sala</option><option value="_act" ${f.estado === '_act' ? 'selected' : ''}>Activos de la empresa</option><option value="_ret" ${f.estado === '_ret' ? 'selected' : ''}>Retoma por aprobar</option></select>
       ${pdvs.length > 1 ? `<select id="ePdv" aria-label="Punto"><option value="">Todos los puntos</option>${pdvs.map(p => `<option ${p === f.pdv ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>` : ''}
+      <label class="chk" title="Electrodomésticos retenidos ese día que todavía no se habían retomado">Retenidos al corte del <input type="date" id="eCorte" value="${esc(f.corte || '')}" style="min-height:34px;padding:2px 6px"></label>${f.corte ? '<button class="btn small" id="eCorteX">Quitar corte</button>' : ''}
       <button class="btn" id="eCsv">Descargar CSV</button>
       ${S.owner && !S.readOnly ? '<button class="btn" id="ePts">Puntos de venta</button>' : ''}
     </div>
+    ${f.corte ? (() => { const pp = {}; lista.forEach(r => { const k = r.pdv || 'Sin punto'; pp[k] = (pp[k] || 0) + 1; }); const tot = all.filter(r => eRetenidoAl(r, f.corte) && (!f.pdv || r.pdv === f.pdv)).length;
+      return `<div class="panel" style="margin:0 0 12px;padding:12px 14px"><p style="margin:0 0 6px"><b>${lista.length}</b> electrodomésticos afectaban la cartera el <b>${fd(f.corte)}</b>. <span class="muted small">No cuentan los que ya habían salido ni los retomados hasta ese día.</span></p>
+        <div class="small" style="display:flex;flex-wrap:wrap;gap:6px 14px">${Object.entries(pp).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span><b>${esc(k)}</b>: ${n}</span>`).join('')}</div>
+        ${tot > lista.length ? `<p class="banner" style="margin:6px 0 0">Ojo: en total son <b>${tot}</b>. <b>${tot - lista.length}</b> no se ven porque tiene otro filtro puesto (estado o búsqueda). <button class="btn small" id="eCorteSolo">Ver todos los del corte</button></p>` : ''}</div>`; })() : ''}
     <div class="tbl-wrap"><table><thead><tr><th class="num">N.°</th><th>Retención</th><th>Punto</th><th>Deudor</th><th>Artículo</th><th>Estado</th><th class="num">Días</th></tr></thead><tbody>
-    ${lista.map(r => { const d = r.fechaRecibo ? daysBetween(r.fechaRecibo, r.fechaSalida || t) : ''; return `<tr class="click" data-eid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.fechaRecibo)}</td><td>${esc(r.pdv || '')}</td><td>${esc(r.deudor || '')}</td><td>${esc(eArt(r))}</td><td>${eChip(r)}${r.faltan && r.faltan.length ? ' <span class="chip pill-warn">Faltan datos</span>' : ''}</td><td class="num">${eVencido(r) ? `<span class="chip ${d - E_PLAZO >= 15 ? 'pill-red' : 'pill-warn'}">${d}</span>` : d}</td></tr>`; }).join('')
+    ${lista.map(r => { const d = r.fechaRecibo ? daysBetween(r.fechaRecibo, r.fechaSalida || t) : ''; return `<tr class="click" data-eid="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.fechaRecibo)}</td><td>${esc(r.pdv || '')}</td><td>${esc(r.deudor || '')}</td><td>${esc(eArt(r))}</td><td>${eChip(r)}${eRetomadoAl(r, '9999-12-31') ? ` <span class="chip" title="Retomado: ya no afecta la cartera">Retomado${r.fechaRetoma ? ' ' + fd(r.fechaRetoma) : ''}</span>` : ''}${r.faltan && r.faltan.length ? ' <span class="chip pill-warn">Faltan datos</span>' : ''}</td><td class="num">${eVencido(r) ? `<span class="chip ${d - E_PLAZO >= 15 ? 'pill-red' : 'pill-warn'}">${d}</span>` : d}</td></tr>`; }).join('')
       || `<tr><td colspan="7" class="empty">${all.length ? 'Ningún electrodoméstico coincide con la búsqueda.' : 'Todavía no hay electrodomésticos registrados.'}</td></tr>`}
     </tbody></table></div>`;
   const nb = $('#eNuevo'); if (nb) nb.onclick = () => eAbrir(null);
   $('#eBuscar').oninput = e => { E.f.text = e.target.value; clearTimeout(E._t); E._t = setTimeout(() => { eRender(); const b = $('#eBuscar'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 250); };
   $('#eEstado').onchange = e => { E.f.estado = e.target.value; eRender(); };
   if ($('#ePdv')) $('#ePdv').onchange = e => { E.f.pdv = e.target.value; eRender(); };
+  $('#eCorte').onchange = e => { E.f.corte = e.target.value; eRender(); };
+  if ($('#eCorteX')) $('#eCorteX').onclick = () => { E.f.corte = ''; eRender(); };
+  if ($('#eCorteSolo')) $('#eCorteSolo').onclick = () => { E.f.estado = ''; E.f.text = ''; eRender(); };
   main.querySelectorAll('[data-efil]').forEach(x => x.onclick = () => { E.f.estado = x.dataset.efil; eRender(); });
   main.querySelectorAll('tr[data-eid]').forEach(tr => { tr.onclick = () => eAbrir(tr.dataset.eid); tr.onkeydown = e => { if (e.key === 'Enter') eAbrir(tr.dataset.eid); }; });
   $('#eCsv').onclick = () => eCsv(lista);
@@ -3684,6 +3696,7 @@ function eAbrir(id, ir){
           <div class="nov-actions" style="margin-top:10px"><button type="button" class="btn ok" id="eApOk">Aprobar retoma</button><button type="button" class="btn danger" id="eApNo">Devolver para corregir</button></div></div>` : ''}
       </fieldset>
       <fieldset id="eSaldoFs"><legend>3. Retoma y saldo del cliente</legend>
+        ${isJefe() && cur.retEstado !== 'Aprobado' ? '<p class="small" style="margin:0 0 8px">Si este electrodoméstico <b>ya se retomó</b> (se bajó del sistema), escriba aquí la <b>fecha de retoma</b> y guarde. Desde ese día ya no cuenta como retenido en el informe de cartera.</p>' : ''}
         <div class="fgrid">${inp('fechaRetoma', 'Fecha de retoma', {date: 1})}${inp('scEstado', '¿Qué pasa con el saldo del cliente?', {sel: ['En cartera castigada y reportado en centrales', 'Saldo pequeño: no se cobra', 'Pagó el saldo: paz y salvo'], wide: 1})}
           ${inp('scFechaPago', 'Fecha en que pagó el saldo', {date: 1})}${inp('scRC', 'Recibo de caja del pago del saldo')}</div>
         <div id="eNotSalBox" hidden><h3 style="margin:14px 0 6px">Notificación al cliente del saldo pendiente *</h3>
@@ -3736,7 +3749,7 @@ function eSync(){
   const ds = nDS(r.tieneDS), w = $('#e_waDS'); if (w) w.closest('.field').hidden = !ds;
   const cu = $('#eCuenta'); if (cu) cu.innerHTML = `Para recuperarlo debe pagar <b>${money(eRecuperar(r)) || '$0'}</b> (vencido + intereses + gastos${eAbonado(r) ? ' − abonos' : ''}). `;
   const rc = $('#eRetCalc'); if (rc) rc.innerHTML = eRetoma(r) ? `Debe en total ${money(eDeudaTotal(r))} − retoma ${money(eRetoma(r))} = ${eSaldo(r) > 0 ? `<b class="rojo">el cliente queda debiendo ${money(eSaldo(r))}</b>` : '<b>el cliente queda a paz y salvo</b>'}.` : '';
-  const sf = $('#eSaldoFs'); if (sf) sf.hidden = !(r.retEstado === 'Aprobado' || st !== 'En sala');
+  const sf = $('#eSaldoFs'); if (sf) sf.hidden = !(r.retEstado === 'Aprobado' || st !== 'En sala' || isJefe());
   const sc = $('#e_scEstado'); if (sc) sc.closest('.field').hidden = !(eSaldo(r) > 0);
   ['scFechaPago', 'scRC'].forEach(k => { const el = $('#e_' + k); if (el) el.closest('.field').hidden = r.scEstado !== 'Pagó el saldo: paz y salvo'; });
   const nb = $('#eNotSalBox'); if (nb) { const antes = nb.hidden; nb.hidden = !ePideNotSal(r); if (antes !== nb.hidden) eDrawFotos(); }
@@ -3871,6 +3884,9 @@ async function eAprobar(ok, salir){
   catch (e) { err.textContent = 'No se pudo guardar. Intenta otra vez.'; }
 }
 window.ELE = {
+  retenidosAl(d){ eIniciar(); const o = {}; for (const r of eLista()) if (eRetenidoAl(r, d)) { const k = r.pdv || ''; o[k] = (o[k] || 0) + 1; } return {cargado: E.cargado, puntos: o}; },
+  verRetenidos(d, pdv){ E.f = {text: '', estado: '', pdv: pdv || '', corte: d}; const b = document.querySelector('#mainnav button[data-mod=ele]'); if (b) b.click(); eRender(); window.scrollTo(0, 0); },
+  pdvs(){ return [...new Set([...eLista().map(r => r.pdv).filter(Boolean), ...E_PDVS])]; },
   render: eRender, abrir: eAbrir, iniciar: eIniciar,
   pend: () => isJefe() ? eLista().filter(eRetPend) : [],
   resumen(){ const all = eLista(); return {cargado: E.cargado, enSala: all.filter(r => r.estado === 'En sala').length, venc: all.filter(eVencido).length, pend: all.filter(eRetPend).length, venta: all.filter(r => r.estado === 'Para la venta').length, jefe: isJefe(), plazo: E_PLAZO, puede: ePuedeEditar()}; }
@@ -5056,7 +5072,7 @@ window.MM = {
     const b = document.querySelector('#mainnav button[data-mod=motos]'); if (b) b.click();
     document.querySelectorAll('[data-tab]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === 'motos'))); render(); window.scrollTo(0, 0);
   },
-  pdvs(){ return [...PDVS]; },
+  pdvs(){ return [...new Set([...records().map(r => r.pdv).filter(Boolean), ...PDVS])]; },
   retenidasAl(d){
     const o = {};
     for (const r of records()) {
@@ -6743,7 +6759,7 @@ function filaPunto(l, c, r, prev, k, edit){
   return `<tr><td><b>${esc(nombreDe(l, c))}</b>${r.enc ? `<div class="small muted">${esc(r.enc)}</div>` : ''}</td><td class="num">${(+r.n || 0).toLocaleString('es-CO')}</td><td class="num"><b>${money(t)}</b></td>
     ${ED.map(e => `<td class="num">${r[e] ? money(r[e]) : '<span class="muted">—</span>'}<div class="small muted">${fpor(pc(r[e], t))}</div></td>`).join('')}
     <td class="num ${a ? 'rojo' : ''}"><b>${money(a)}</b><div class="small">${fpor(pc(a, t))}</div></td>
-    <td class="num">${inp('ret', r.ret)}${l === 'motos' && window.MM && MM.verRetenidas && MESD[k] && MESD[k].fuente === 'sistema' ? `<div><a href="#" class="small" data-verret="${esc(c)}">ver cuáles</a></div>` : ''}</td>${l === 'motos' ? `<td class="num">${inp('emb', r.emb)}</td>` : ''}
+    <td class="num">${inp('ret', r.ret)}${MESD[k] && MESD[k].fuente === 'sistema' && (l === 'motos' ? window.MM && MM.verRetenidas : window.ELE && ELE.verRetenidos) ? `<div><a href="#" class="small" data-verret="${esc(c)}" data-verl="${l}">ver cuáles</a></div>` : ''}</td>${l === 'motos' ? `<td class="num">${inp('emb', r.emb)}</td>` : ''}
     <td class="num ${bs == null ? '' : bs >= 0 ? 'okc' : 'rojo'}">${bs == null ? '—' : (bs >= 0 ? '▼ ' : '▲ ') + money(Math.abs(bs))}</td></tr>`;
 }
 function vLinea(l, d){
@@ -6806,11 +6822,15 @@ function encDe(l, c, r){
   return raw && !/sin asignar/i.test(raw) ? corto(raw) : '';
 }
 const PDV_MOTOS = {CAU1: ['CAUCASIA'], CARG: ['CARGUERO CAUCASIA', 'CARGUEROS', 'CARGUERO'], TRON: ['TRONCAL', 'LA TRONCAL'], TIE: ['TIERRALTA'], PTO: ['PUERTO', 'PUERTO LIBERTADOR'], AYA: ['AYAPEL'], CER1: ['CERETE 1', 'CERETE'], CER2: ['CERETE 2'], MAJ: ['MAJAGUAL'], PLAN: ['PLANETA', 'PLANETA RICA'], MBANO: ['MONTELIBANO'], SINCE: ['SINCELEJO'], FINAN: ['SANTA ANA'], LOR: ['LORICA'], PUENUEVO: ['PUEBLO NUEVO'], CASAMONT: ['CASANOVA MONTELIBANO'], APAR: ['LA APARTADA'], NIU: ['MEDELLIN', 'NIU']};
+const PDV_ELECTRO = {TIE: ['TIERRALTA'], 'CASA PTO': ['CASANOVA PUERTO'], 'CASA AYA': ['CASANOVA AYAPEL'], MAJ: ['MAJAGUAL'], TRON: ['TRONCAL', 'LA TRONCAL'], PLAN: ['PLANETA', 'PLANETA RICA'], MBANO: ['MONTELIBANO'], CAU21: ['CAUCASIA', 'LA 21'], CASMAJ: ['CASANOVA MAJAGUAL'], PUER: ['ELECTRO PUERTO', 'PUERTO'], CASAPART: ['CASANOVA LA APARTADA'], CASMON: ['CASANOVA MONTELIBANO'], PUENUE: ['PUEBLO NUEVO']};
 const finMes = k => { const [y, m] = k.split('-').map(Number); return `${k}-${pad(new Date(y, m, 0).getDate())}`; };
 // motos retenidas y en patios (embargo) de ese punto el último día del mes, según Motos retenidas; lo que usted escriba a mano manda
 function retDe(l, c, k, r){
   const o = {ret: r.ret, emb: r.emb};
-  if (l !== 'motos' || !window.MM || !MM.retenidasAl || !MESD[k] || MESD[k].fuente !== 'sistema') return o;
+  if (!MESD[k] || MESD[k].fuente !== 'sistema') return o;
+  if (l === 'electro') { if (!window.ELE || !ELE.retenidosAl) return o; const R = ELE.retenidosAl(finMes(k)); if (!R || !R.cargado) return o;
+    const al = (PDV_ELECTRO[c] || [c]).map(norm); let n = 0; for (const [p, x] of Object.entries(R.puntos)) if (al.includes(norm(p))) n += x; return {ret: r.retM ? r.ret : n, emb: r.emb}; }
+  if (!window.MM || !MM.retenidasAl) return o;
   const R = MM.retenidasAl(finMes(k)); if (!R || !R.cargado) return o;
   const al = (PDV_MOTOS[c] || [c]).map(norm); let ret = 0, emb = 0;
   for (const [p, x] of Object.entries(R.puntos)) if (al.includes(norm(p))) { ret += x.ret; emb += x.emb; }
@@ -6929,6 +6949,7 @@ async function traerAnterior(k){
   } catch (e) { console.error(e); toast('No pude leer sus Excel de cartera. Súbalos de nuevo en "Mis plantillas de Excel".'); }
   TRAYENDO = false; render();
 }
+document.addEventListener('mm:data', () => { const m = q('#edad-main'); if (m && listo && m.offsetParent && !m.contains(document.activeElement)) render(); });
 async function guardarCcfg(c){ await col().doc('_comision_cfg').set(c); CCFG = c; }
 function bindComision(){
   const root = q('#edad-main');
@@ -7025,8 +7046,8 @@ function bind(){
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } });
   const ct = q('#ed-cont'); if (ct) ct.onchange = async () => { const d = JSON.parse(JSON.stringify(MESD[SEL])); d.contable = Math.round(+ct.value.replace(/\D/g, '')) || 0;
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } };
-  root.querySelectorAll('[data-verret]').forEach(a => a.onclick = ev => { ev.preventDefault(); const al = (PDV_MOTOS[a.dataset.verret] || []).map(norm);
-    const pdv = (MM.pdvs ? MM.pdvs() : []).find(p => al.includes(norm(p))) || ''; MM.verRetenidas(finMes(SEL), pdv); });
+  root.querySelectorAll('[data-verret]').forEach(a => a.onclick = ev => { ev.preventDefault(); const ele = a.dataset.verl === 'electro', al = ((ele ? PDV_ELECTRO : PDV_MOTOS)[a.dataset.verret] || []).map(norm), X = ele ? ELE : MM;
+    const pdv = (X.pdvs ? X.pdvs() : []).find(p => al.includes(norm(p))) || ''; ele ? ELE.verRetenidos(finMes(SEL), pdv) : MM.verRetenidas(finMes(SEL), pdv); });
   bindComision();
   if (!CARGA) return;
   q('#ed-cancelar').onclick = () => { CARGA = null; render(); };
