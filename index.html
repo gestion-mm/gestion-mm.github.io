@@ -4198,7 +4198,7 @@ const C_CAMPOS = {
   entrega: [
     ['g', 'Carta'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
     ['g', 'Cliente'], ['nombre', 'Nombre del deudor', {req: 1, wide: 1}], ['ciudadCliente', 'Ciudad del deudor', {req: 1}],
-    ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor'], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
+    ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor', {req: 1}], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
   ],
   eentrega: [
     ['g', 'Carta'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
@@ -4214,13 +4214,13 @@ const C_CAMPOS = {
   retoma1: [
     ['g', 'Carta'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
     ['g', 'Cliente'], ['nombre', 'Nombre del deudor', {req: 1, wide: 1}], ['ciudadCliente', 'Ciudad del deudor', {req: 1}],
-    ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor'], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
+    ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor', {req: 1}], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
     ['g', 'Retoma'], ['fechaEntrega', 'Fecha en que la moto se entregó a la empresa', {date: 1, req: 1}],
   ],
   retoma2: [
     ['g', 'Carta'], ['ciudad', 'Punto de venta', {req: 1, pdv: 1}], ['fecha', 'Fecha de la carta', {date: 1, req: 1}],
     ['g', 'Cliente'], ['nombre', 'Nombre del deudor', {req: 1, wide: 1}], ['cc', 'Cédula del deudor', {req: 1}], ['dsNombre', 'Deudor solidario (si tiene)', {wide: 1}], ['dsCc', 'Cédula del deudor solidario'], ['ciudadCliente', 'Ciudad del deudor', {req: 1}],
-    ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor'], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
+    ['g', 'Vehículo'], ['marca', 'Marca', {req: 1}], ['linea', 'Línea', {req: 1}], ['modelo', 'Modelo', {req: 1}], ['motor', 'Motor', {req: 1}], ['chasis', 'Chasis'], ['placa', 'Placa', {req: 1}], ['color', 'Color'], ['servicio', 'Servicio', {sel: ['PARTICULAR', 'PÚBLICO']}],
     ['g', 'Saldo pendiente'], ['saldo', 'Saldo que quedó debiendo después de la retoma', {money: 1, req: 1}],
   ],
   visita: [
@@ -4400,7 +4400,7 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
         const lec = {tipo: 'lectura', at: new Date().toISOString(), por: actorId(), cobrada: r._fuente !== 'gratis', placaEscrita: tp.value.toUpperCase().trim(), datos: dd, huella, repetida: !!donde, donde};
         try { await S.db.doc('cartas/' + lid).set(lec); C.lec[lid] = {...lec, id: lid}; } catch (e) {}
         const dudas = (r.dudas || []).filter(x => x && x.campo).map(x => x.campo);
-        msg.innerHTML = (dd.placa || dd.nombre ? `Listo. <b>Revisa los datos</b> antes de guardar${dudas.length ? ` (ojo con: ${esc(dudas.join(', '))})` : ''}.` : 'No se pudo leer bien la tarjeta. Intenta con una foto más clara o escribe los datos.')
+        msg.innerHTML = (dd.placa || dd.nombre ? `Listo. <b>Revisa los datos</b> antes de guardar${dudas.length ? ` (ojo con: ${esc(dudas.join(', '))})` : ''}.${dd.motor ? '' : ' <b class="rojo">No se pudo leer el número de motor: escríbalo a mano mirando la tarjeta.</b>'}` : 'No se pudo leer bien la tarjeta. Intenta con una foto más clara o escribe los datos.')
           + (donde ? ` <b class="car-rep">Ojo: la placa ${esc(dd.placa)} ya estaba en ${esc(donde)}; esta lectura no era necesaria.</b>` : '')
           + (dd.placa && nid(dd.placa) !== nid(tp.value) ? ` <b>La placa de la tarjeta (${esc(dd.placa)}) no es la que escribiste.</b>` : '')
           + (dd.documento === 'runt' ? ' <b>Es una consulta del RUNT: no trae el nombre ni la cédula del cliente. Escríbelos o búscalo arriba por su nombre.</b>' : '');
