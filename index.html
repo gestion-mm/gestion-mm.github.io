@@ -7017,8 +7017,8 @@ function vComision(){
 let TRAER = null, TRAYENDO = false;
 const mesAntes = k => { const [y, m] = k.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${pad(m - 1)}`; };
 // trae de los Excel guardados como plantilla la fila del mes anterior de cada punto (para comparar si bajó o subió)
-async function traerAnterior(k){
-  const pk = mesAntes(k); TRAYENDO = true; render();
+async function traerAnterior(k, pkx){
+  const pk = pkx || mesAntes(k); TRAYENDO = true; render();
   try {
     const files = [];
     for (const l of ['motos', 'electro']) { if (!PLC[l]) continue; const meta = PLC[l]; let b64 = '';
@@ -7033,6 +7033,59 @@ async function traerAnterior(k){
   TRAYENDO = false; render();
 }
 document.addEventListener('mm:data', () => { const m = q('#edad-main'); if (m && listo && m.offsetParent && !m.contains(document.activeElement)) render(); });
+/* ---------- Metas de Electro por trimestre: bajar la mora frente al cierre del trimestre anterior, o no pasar de un tope ---------- */
+let METAS = null, TRAER_M = null;
+const METAS_BASE = {inicio: '2026-10', fin: '2026-12', puntos: {
+  'CASA PTO': {t: 'baja', v: 300000}, 'CASA AYA': {t: 'baja', v: 500000}, MAJ: {t: 'baja', v: 500000}, TRON: {t: 'baja', v: 500000}, PLAN: {t: 'baja', v: 500000}, MBANO: {t: 'baja', v: 500000},
+  CAU21: {t: 'tope', v: 1000000}, PUER: {t: 'tope', v: 1000000}, CASAPART: {t: 'tope', v: 1000000}, CASMON: {t: 'tope', v: 1000000}, PUENUE: {t: 'tope', v: 1000000}}};
+const metasCfg = () => ({...METAS_BASE, ...(METAS || {}), puntos: {...METAS_BASE.puntos, ...((METAS || {}).puntos || {})}});
+const mesesEntre = (a, b) => { const o = []; let k = a; for (let i = 0; i < 24 && k <= b; i++) { o.push(k); const [y, m] = k.split('-').map(Number); k = m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`; } return o; };
+function vMetas(){
+  const C = metasCfg(), base = mesAntes(C.inicio), mb = MESD[base], meses = mesesEntre(C.inicio, C.fin);
+  if (!mb || !mb.electro) {
+    if ((PLC.electro || PLC.motos) && DB && TRAER_M !== base) { TRAER_M = base; setTimeout(() => traerAnterior(C.inicio, base), 0); }
+    return `<p class="empty" style="margin-top:14px">Para las metas se necesita la cartera de Electro al cierre de ${etqMes(base).toLowerCase()}. ${TRAYENDO ? 'Trayéndola de sus Excel…' : PLC.electro || PLC.motos ? '<button class="btn small" id="mt-traer">Traerla de mis Excel</button>' : 'Suba sus Excel en "Mis plantillas de Excel".'}</p>`;
+  }
+  const hoyK = meses.filter(k => MESD[k] && MESD[k].electro).pop() || null, hoy = hoyK ? MESD[hoyK] : null;
+  const corteHoy = hoy && hoy.corte ? fd(hoy.corte) : hoyK ? etqMes(hoyK) : '';
+  const [yf, mf] = C.fin.split('-').map(Number), finTxt = `${new Date(yf, mf, 0).getDate()} de ${MESES[mf - 1].toLowerCase()}`;
+  const filas = puntosDe('electro', mb).map(c => {
+    const m = C.puntos[c] || {t: 'no'}, b = mb.electro[c], mora0 = b ? atr(b) : 0;
+    const obj = m.t === 'baja' ? mora0 - (+m.v || 0) : m.t === 'tope' ? +m.v || 0 : null;
+    const porMes = meses.map(k => { const r = MESD[k] && MESD[k].electro && MESD[k].electro[c]; return r ? atr(r) : null; });
+    const act = hoy && hoy.electro && hoy.electro[c] ? atr(hoy.electro[c]) : null;
+    const falta = obj == null || act == null ? null : act - obj;
+    return {c, m, mora0, obj, porMes, act, falta};
+  });
+  const conMeta = filas.filter(f => f.obj != null), cumplen = conMeta.filter(f => f.falta != null && f.falta <= 0);
+  const celda = (v, obj) => v == null ? '<td class="num muted">—</td>' : `<td class="num" style="font-weight:600;color:${obj == null ? 'inherit' : v <= obj ? '#00a3e0' : '#e00000'}">${money(v)}</td>`;
+  return `<div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="n">${cumplen.length} de ${conMeta.length}</div><div class="l">Puntos que hoy cumplen la meta</div><div class="small muted">Con la cartera de ${esc(corteHoy || '—')}</div></div>
+      <div class="tile"><div class="n">${money(sum(conMeta.map(f => Math.max(0, f.falta || 0))))}</div><div class="l">Mora que falta bajar en total</div><div class="small muted">Plazo: ${finTxt}</div></div>
+    </div>
+    <p class="small muted" style="margin:10px 0 0">La meta se mide sobre la <b>mora</b> (1 a 30 + 31 a 60 + 61 a 90 + más de 90). "Bajar" = la mora del cierre de ${etqMes(base).toLowerCase()} menos el valor de la meta; "Tope" = la mora no puede pasar de ese valor. Puede revisarla cada vez que suba un corte, aunque el mes no haya terminado.</p>
+    <div class="tbl-wrap" style="margin-top:10px"><table class="rec-tab ed-tab"><thead><tr><th>Punto</th><th>Meta</th><th class="num">Mora ${esc(etqMes(base))}</th><th class="num">Mora máxima al ${finTxt}</th>${meses.map(k => `<th class="num">${esc(etqMes(k))}</th>`).join('')}<th class="num">Le falta bajar</th></tr></thead>
+    <tbody>${filas.map(f => `<tr><td><b>${esc(nombreDe('electro', f.c))}</b></td>
+      <td class="small">${f.m.t === 'baja' ? 'Bajar ' + money(f.m.v) : f.m.t === 'tope' ? 'Tope ' + money(f.m.v) : '<span class="muted">Sin meta</span>'}</td>
+      <td class="num">${money(f.mora0)}</td><td class="num"><b>${f.obj == null ? '—' : money(Math.max(0, f.obj))}</b></td>
+      ${f.porMes.map(v => celda(v, f.obj)).join('')}
+      <td class="num">${f.obj == null ? '' : f.falta == null ? '<span class="muted">Sin corte</span>' : f.falta <= 0 ? `<span style="color:#00a3e0;font-weight:700">✓ Cumplida</span><div class="small muted">debe sostenerla${f.falta < 0 ? ' · le sobran ' + money(-f.falta) : ''}</div>` : `<b class="rojo">${money(f.falta)}</b>`}</td></tr>`).join('')}</tbody></table></div>
+    ${DB ? `<details class="hist-box" style="margin-top:10px"><summary class="btn small">Cambiar metas</summary><div class="panel" style="margin-top:8px">
+      <div class="fgrid"><div class="field"><label for="mt-ini">Desde el mes</label><input type="month" id="mt-ini" value="${C.inicio}"></div><div class="field"><label for="mt-fin">Hasta el mes (plazo)</label><input type="month" id="mt-fin" value="${C.fin}"></div></div>
+      <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Punto</th><th>Tipo de meta</th><th class="num">Valor</th></tr></thead><tbody>
+      ${puntosDe('electro', mb).map(c => { const m = C.puntos[c] || {t: 'no', v: ''}; return `<tr><td>${esc(nombreDe('electro', c))}</td><td><select data-mtt="${esc(c)}"><option value="no" ${m.t === 'no' ? 'selected' : ''}>Sin meta</option><option value="baja" ${m.t === 'baja' ? 'selected' : ''}>Bajar la mora en</option><option value="tope" ${m.t === 'tope' ? 'selected' : ''}>Mora máxima (tope)</option></select></td><td><input class="money-in" inputmode="numeric" data-mtv="${esc(c)}" value="${m.v ? (+m.v).toLocaleString('es-CO') : ''}" style="max-width:140px"></td></tr>`; }).join('')}
+      </tbody></table></div><div class="nov-actions" style="margin-top:8px"><button class="btn primary" id="mt-guardar">Guardar metas</button></div></div></details>` : ''}`;
+}
+function bindMetas(){
+  const tr = q('#mt-traer'); if (tr) tr.onclick = () => { const C = metasCfg(); traerAnterior(C.inicio, mesAntes(C.inicio)); };
+  const g = q('#mt-guardar'); if (!g) return;
+  g.onclick = async () => {
+    const C = metasCfg(), puntos = {};
+    document.querySelectorAll('[data-mtt]').forEach(sel => { const c = sel.dataset.mtt, v = Math.round(+(String((q(`[data-mtv="${CSS.escape(c)}"]`) || {}).value || '').replace(/\D/g, '')) || 0); puntos[c] = {t: sel.value, v}; });
+    const nuevo = {inicio: q('#mt-ini').value || C.inicio, fin: q('#mt-fin').value || C.fin, puntos};
+    try { await col().doc('_metas_electro').set(nuevo); METAS = nuevo; toast('Metas guardadas.'); render(); } catch (e) { toast('No se pudieron guardar las metas.'); }
+  };
+}
 async function guardarCcfg(c){ await col().doc('_comision_cfg').set(c); CCFG = c; }
 function bindComision(){
   const root = q('#edad-main');
@@ -7090,7 +7143,7 @@ function render(){
   const ks = meses(); if (!SEL || !MESD[SEL]) SEL = ks[ks.length - 1] || null;
   const d = SEL ? MESD[SEL] : null;
   root.innerHTML = `<div class="rec-top"><div><h2>Cartera por edades</h2><p class="sub">Su informe mensual de cartera de Motos y Electro por punto, con la diferencia frente al cierre contable. Solo usted lo ve.</p></div>
-      <div class="rec-ctrl"><div class="seg" role="tablist" aria-label="Vista">${[['motos', 'Motos'], ['electro', 'Electro'], ['total', 'Total y diferencia'], ['com', 'Comisiones']].map(([k, n]) => `<button role="tab" aria-selected="${k === VISTA}" data-ev="${k}">${n}</button>`).join('')}</div>
+      <div class="rec-ctrl"><div class="seg" role="tablist" aria-label="Vista">${[['motos', 'Motos'], ['electro', 'Electro'], ['total', 'Total y diferencia'], ['com', 'Comisiones'], ['metas', 'Metas Electro']].map(([k, n]) => `<button role="tab" aria-selected="${k === VISTA}" data-ev="${k}">${n}</button>`).join('')}</div>
       ${ks.length ? `<select id="ed-mes" aria-label="Mes">${ks.slice().reverse().map(k => `<option value="${k}" ${k === SEL ? 'selected' : ''}>${etqMes(k)}</option>`).join('')}</select>` : ''}</div></div>
     ${DB ? `<div class="rec-acc"><label class="btn primary" for="ed-f-sis">Subir informe de edades del sistema</label><input type="file" id="ed-f-sis" accept=".xlsx,.xls,.csv" hidden>
       ${d && (PLC.motos || PLC.electro) ? '<button class="btn primary" id="ed-mios">Descargar mis Excel</button>' : ''}${d ? `<button class="btn" id="ed-xls">${PLC.motos || PLC.electro ? 'Excel resumen' : 'Descargar Excel'}</button>` : ''}
@@ -7103,7 +7156,7 @@ function render(){
     ${CARGA ? vCarga() : ''}
     ${!d ? `<p class="empty" style="margin-top:14px">Todavía no hay cartera guardada. Suba el informe de edades del sistema (RPT_CARTERA_EDADES_CORTE) del cierre del mes, o importe sus Excel de INFORME CARTERA MOTOS y ELECTRO para traer todo el histórico.</p>` :
       `${d.fuente === 'sistema' ? `<p class="small muted" style="margin:10px 0 0">Corte de ${etqMes(SEL).toLowerCase()} · tomado de ${esc(d.archivo || 'el informe del sistema')}</p>` : `<p class="small muted" style="margin:10px 0 0">${etqMes(SEL)} · tomado de sus Excel de cartera</p>`}
-      ${VISTA === 'total' ? vTotal(d) : VISTA === 'com' ? vComision() : vLinea(VISTA, d)}`}`;
+      ${VISTA === 'total' ? vTotal(d) : VISTA === 'com' ? vComision() : VISTA === 'metas' ? vMetas() : vLinea(VISTA, d)}`}`;
   bind();
 }
 function bind(){
@@ -7131,7 +7184,7 @@ function bind(){
     try { await guardarMes(SEL, d); render(); } catch (e) { toast('No se pudo guardar.'); } };
   root.querySelectorAll('[data-verret]').forEach(a => a.onclick = ev => { ev.preventDefault(); const ele = a.dataset.verl === 'electro', al = ((ele ? PDV_ELECTRO : PDV_MOTOS)[a.dataset.verret] || []).map(norm), X = ele ? ELE : MM;
     const pdv = (X.pdvs ? X.pdvs() : []).find(p => al.includes(norm(p))) || ''; ele ? ELE.verRetenidos(finMes(SEL), pdv) : MM.verRetenidas(finMes(SEL), pdv); });
-  bindComision();
+  bindComision(); bindMetas();
   if (!CARGA) return;
   q('#ed-cancelar').onclick = () => { CARGA = null; render(); };
   q('#ed-guardar').onclick = guardar;
@@ -7475,7 +7528,7 @@ async function empezar(){
   cargarPlantillasC().then(() => { const m = q('#edad-main'); if (m && !m.hidden && !CARGA) render(); });
   DB.collection('recaudo').onSnapshot(s => {
     const D = {}; RECD = {}; CMES = {};
-    s.docs.forEach(d => { const x = d.data(); if (!x) return; if (/^(motos|electro)-\d{4}$/.test(d.id)) RECD[d.id] = x; else if (d.id === '_comision_cfg') CCFG = x; else if (d.id.startsWith('comision-')) CMES[d.id.slice(9)] = x; else if (d.id === '_edades_cfg') CFG = {cuentas: {}, nombres: {motos: {}, electro: {}, otras: {}}, ...x}; else if (d.id.startsWith('edades-')) D[x.mes || d.id.slice(7)] = x; });
+    s.docs.forEach(d => { const x = d.data(); if (!x) return; if (/^(motos|electro)-\d{4}$/.test(d.id)) RECD[d.id] = x; else if (d.id === '_comision_cfg') CCFG = x; else if (d.id === '_metas_electro') METAS = x; else if (d.id.startsWith('comision-')) CMES[d.id.slice(9)] = x; else if (d.id === '_edades_cfg') CFG = {cuentas: {}, nombres: {motos: {}, electro: {}, otras: {}}, ...x}; else if (d.id.startsWith('edades-')) D[x.mes || d.id.slice(7)] = x; });
     MESD = D; listo = true;
     const delCorte = new Set(Object.values({...CUENTAS, ...(CFG.cuentas || {})}).filter(v => String(v).startsWith('otras|')).map(v => v.split('|')[1]));
     for (const k of meses()) { const x = MESD[k], pv = anterior(k); if (x.fuente !== 'sistema' || x.otrasV || !x.otras) continue;
