@@ -2533,9 +2533,9 @@ function _perMap(p){
   const t = v => { const n = String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase(); return n; };
   return (p.repuestos || []).map(x => ({
     cant: +x.cant || 1, codigo: String(x.codigo || ''), ref: String(x.ref || ''),
-    tipo: /INDISP/.test(t(x.tipo)) ? 'Indispensable' : /OPCION/.test(t(x.tipo)) ? 'Opcional' : /REUTIL/.test(t(x.tipo)) ? 'Reutilizable' : '',
+    tipo: /^IN?D/.test(t(x.tipo).trim()) ? 'Indispensable' : /OPC/.test(t(x.tipo)) ? 'Opcional' : /REUT/.test(t(x.tipo)) ? 'Reutilizable' : '',
     origen: /ORIG/.test(t(x.origen)) ? 'Original' : /GENER/.test(t(x.origen)) ? 'Genérico' : '',
-    precio: Math.round(+x.precio || 0), disp: /^S/.test(t(x.disp)) ? 'Sí' : /^N/.test(t(x.disp)) ? 'No' : ''
+    precio: Math.round(+x.precio || 0), disp: /^S|^DISPON/.test(t(x.disp).trim()) ? 'Sí' : /^N/.test(t(x.disp).trim()) ? 'No' : ''
   }));
 }
 async function solicitarPeritaje(ro){
@@ -4379,7 +4379,15 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
   if (bt) bt.onclick = () => {
     const msg = $('#cTarMsg'), P = nid(tp.value);
     if (P.length < 5) { msg.textContent = 'Escribe primero la placa (así no se paga una lectura si la moto ya está guardada).'; tp.focus(); return; }
-    if (llenarSinLeer(P)) { msg.innerHTML = `Esa placa ya está en la aplicación (${esc(cDondeEsta(P))}): se llenaron los datos <b>sin leer la tarjeta</b>, no se gastó lectura. Revísalos.`; cTotal(); return; }
+    if (bt.dataset.forzar !== P && llenarSinLeer(P)) {
+      cTotal();
+      const faltan = [['nombre', 'el nombre del deudor'], ['motor', 'el motor'], ['chasis', 'el chasis'], ['linea', 'la línea']].filter(([k]) => { const el = $('#c_' + k); return el && !String(el.value).trim(); }).map(x => x[1]);
+      if (!faltan.length) { msg.innerHTML = `Esa placa ya está en la aplicación (${esc(cDondeEsta(P))}): se llenaron los datos <b>sin leer la tarjeta</b>, no se gastó lectura. Revísalos.`; return; }
+      bt.dataset.forzar = P;
+      msg.innerHTML = `Esa placa ya está en la aplicación (${esc(cDondeEsta(P))}) y se llenó lo que había, pero <b class="rojo">no trae ${esc(faltan.join(', '))}</b>. Escríbalo a mano, o toque otra vez <b>"Leer tarjeta de propiedad"</b> para leer la tarjeta (esa sí gasta una lectura).`;
+      return;
+    }
+    delete bt.dataset.forzar;
     const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,application/pdf,.pdf,.docx'; inp.multiple = true;
     inp.onchange = async () => {
       const files = [...inp.files].slice(0, 2); if (!files.length) return;
@@ -4387,7 +4395,7 @@ ${tipo === 'visita' || C_ELE.has(tipo) ? `        <p class="small muted" style="
       // la misma foto ya leída antes: se reutiliza sin pagar
       let huella = '';
       try { const bufs = await Promise.all(files.map(f => f.arrayBuffer())); const h = await crypto.subtle.digest('SHA-256', await new Blob(bufs).arrayBuffer()); huella = [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join(''); } catch (e) {}
-      const ya = huella && Object.values(C.lec).find(x => x.huella === huella && x.datos);
+      const ya = huella && Object.values(C.lec).find(x => x.huella === huella && x.datos && x.datos.nombre);
       if (ya) { ponLec(ya.datos); msg.innerHTML = 'Esa misma foto ya se había leído: se usaron esos datos <b>sin pagar otra lectura</b>. Revísalos.'; bt.disabled = false; return; }
       try {
         const lector = window.claude && window.claude.use ? await window.claude.use('sample') : null;
@@ -4789,7 +4797,7 @@ async function cLoteLeer(files, pinta){
       let huella = '';
       try { const h = await crypto.subtle.digest('SHA-256', await f.file.arrayBuffer()); huella = [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join(''); } catch (e) {}
       let dd = null, pagada = false;
-      const ya = huella && Object.values(C.lec).find(x => x.huella === huella && x.datos);
+      const ya = huella && Object.values(C.lec).find(x => x.huella === huella && x.datos && x.datos.nombre);
       // si el archivo se llama con la placa (ej. GRY01I.pdf) y esa placa ya está guardada, no se paga lectura
       const pn = (String(f.nombre).toUpperCase().replace(/[\s._-]+/g, '').match(/[A-Z]{3}\d{2}[A-Z]|\d{3}[A-Z]{3}/) || [])[0] || '';
       const guard = pn ? cDatosPlaca(nid(pn)) : null, mo = pn && !guard ? records().find(z => nid(z.placa) === nid(pn)) : null;
@@ -6171,7 +6179,7 @@ function vReporte(){
     </div>
     ${DB ? `<div class="rec-acc"><label class="btn primary" for="rec-f-rec">Subir recaudo del sistema</label><input type="file" id="rec-f-rec" accept=".xlsx,.xls,.csv" hidden>
       <label class="btn" for="rec-f-cart">Subir cartera por edades</label><input type="file" id="rec-f-cart" accept=".xlsx,.xls,.csv" hidden>
-      ${DL ? '<button class="btn" id="rec-xls">Descargar Excel</button>' : ''}</div>` : '<div class="banner">Abre la aplicación desde claude.ai para subir y guardar el recaudo.</div>'}
+      ${DL ? `<button class="btn" id="rec-xls">Descargar Excel</button>${PLMETA.motos && PLMETA.electro ? '<button class="btn primary" id="rec-xls2">Descargar mis Excel (Motos y Electro)</button>' : ''}` : ''}</div>` : '<div class="banner">Abre la aplicación desde claude.ai para subir y guardar el recaudo.</div>'}
     ${CARGA ? vCarga() : ''}
     <div class="tiles" style="margin-top:14px">
       <div class="tile"><div class="n">${money(tot)}</div><div class="l">Recaudo ${LINEAS[l]} · ${MESES[m - 1]} ${y}</div>${!tot ? '<div class="x">Todavía no hay recaudo de este mes.</div>' : ''}</div>
@@ -6228,7 +6236,9 @@ function bind(){
     try { CARGA = await fn(file); } catch (e) { toast({'formato-recaudo': 'Ese archivo no parece el informe de recaudo del sistema: no tiene las columnas CUENTA y VALOR_RECAUDO.', 'formato-cartera': 'Ese archivo no parece la cartera por edades: no tiene las columnas CUENTA y T. CARTERA.', 'formato-historico': 'No encontré hojas con meses y semanas en ese archivo.', xlsx: 'No se pudo cargar el lector de Excel. Recarga la página.'}[e.message] || 'No se pudo leer el archivo.'); }
     render(); const p = q('.rec-carga'); if (p) p.scrollIntoView({block: 'start', behavior: 'smooth'}); }; };
   abrir('#rec-f-rec', leerSistema); abrir('#rec-f-cart', leerCartera); abrir('#rec-f-hist', leerHistorico);
-  const xb = q('#rec-xls'); if (xb) xb.onclick = descargar;
+  const xb = q('#rec-xls'); if (xb) xb.onclick = () => descargar(LIN);
+  const xb2 = q('#rec-xls2'); if (xb2) xb2.onclick = async () => { xb2.disabled = true; xb2.textContent = 'Preparando sus 2 Excel…';
+    try { await descargar('motos'); await new Promise(r => setTimeout(r, 900)); await descargar('electro'); } finally { xb2.disabled = false; xb2.textContent = 'Descargar mis Excel (Motos y Electro)'; } };
   document.querySelectorAll('#rec-main [data-pl]').forEach(inp => inp.onchange = async () => { const file = inp.files[0], l = inp.dataset.pl; inp.value = ''; if (!file) return;
     toast('Guardando tu plantilla…'); try { await subirPlantilla(file, l); toast(`Plantilla de ${LINEAS[l]} guardada.`); } catch (e) { toast(e && e.message === 'formato-plantilla' ? 'Ese archivo no es un Excel (.xlsx).' : 'No se pudo guardar la plantilla.'); } render(); });
   const mg = q('#rec-meta-g'); if (mg) mg.onclick = async () => { const meta = {}; for (const k of Object.keys(LINEAS)) { const v = +(q('#rec-meta-' + k).value.replace(/\D/g, '')) || 0; if (v) meta[k] = v; }
@@ -6290,20 +6300,21 @@ async function guardar(){
     CARGA = null; render(); notify();
   } catch (e) { b.disabled = false; b.textContent = 'Guardar'; toast(e && e.code === 'quota_exceeded' ? 'La base de la aplicación está llena.' : 'No se pudo guardar. Inténtalo de nuevo.'); }
 }
-async function descargar(){
+async function descargar(lin){
   if (!DL) return;
-  if (PLMETA[LIN] && typeof JSZip !== 'undefined') {
+  const LX = typeof lin === 'string' ? lin : LIN;
+  if (PLMETA[LX] && typeof JSZip !== 'undefined') {
     const b = q('#rec-xls'); if (b) { b.disabled = true; b.textContent = 'Preparando tu Excel…'; }
     try {
-      const l = LIN, zip = await obtenerPlantilla(l);
+      const l = LX, zip = await obtenerPlantilla(l);
       const cods = [...new Set(Object.values(DOCS).filter(x => x.linea === l).flatMap(x => Object.keys(x.puntos || {})))];
       const res = await llenarPlantilla(zip, l, {codigos: cods, years: anios(l).slice().sort((a, b) => a - b), vals: (y, m, c) => vals(l, y, m, c),
-        cartera: k => (CART[k] && CART[k].porPunto && CART[k].porPunto[l]) || null, corte: k => (CART[k] && CART[k].corte) || null});
+        cartera: k => (CART[k] && CART[k].porPunto && CART[k].porPunto[l]) || (window.EDADES && EDADES.carteraParaRecaudo ? EDADES.carteraParaRecaudo(l, k) : null), corte: k => (CART[k] && CART[k].corte) || null});
       const blob = await zip.generateAsync({type: 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const hoy = new Date(), nom = (PLMETA[l].nombre || `RECAUDOS ${LINEAS[l].toUpperCase()}.xlsx`).replace(/\.xlsx?$/i, '').replace(/^[0-9a-f]{8}-/i, '') + ` ${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}.xlsx`;
       window.__ultimoExcel = blob;
       await DL.save({filename: nom, data: blob});
-      toast(`Excel descargado con tu formato. ${res.cambios ? res.cambios + ' celdas actualizadas.' : 'No había valores nuevos.'} ${res.avisos.join(' ')}`);
+      toast(`Excel de ${LINEAS[l]} descargado con tu formato. ${res.cambios ? res.cambios + ' celdas actualizadas.' : 'No había valores nuevos.'} ${res.avisos.join(' ')}`);
     } catch (e) { if (e && e.code !== 'declined') toast(e && e.message === 'incompleta' ? 'La plantilla guardada está incompleta. Súbela de nuevo en "Metas y plantillas de Excel".' : 'No se pudo preparar el Excel.'); console.error(e); }
     if (b) { b.disabled = false; b.textContent = 'Descargar Excel'; }
     return;
@@ -6453,6 +6464,8 @@ async function llenarPlantilla(zip, l, d){
   for (const h of hojasWb) {
     const n = h.name.replace(/\s+/g, '').toUpperCase(); if (n !== '%' && n !== '%RECAUDO') continue;
     const H = await abrir(h), filas = [...H.filas.keys()].sort((a, b) => a - b), bloques = [];
+    { const fx = []; for (const c of H.celdas.values()) { const fe = c.getElementsByTagName('f')[0]; if (fe && fe.getAttribute('t') === 'shared') fx.push([fe, formula(H, c)]); }
+      for (const [fe, t] of fx) { if (t == null) continue; fe.textContent = t; ['t', 'si', 'ref'].forEach(x => fe.removeAttribute(x)); } }
     for (const r of filas) { const a = valor(H.celdas.get('A' + r)), c = valor(H.celdas.get('C' + r));
       if (typeof a === 'string' && /^(MOTOS|ELECTRO)$/i.test(a.trim()) && typeof c === 'string' && /sem\s*1/i.test(c)) { let t = r + 1; while (H.filas.has(t + 1) && !/^total$/i.test(String(valor(H.celdas.get('A' + t)) || '').trim())) t++; bloques.push({r, t}); } }
     const mesDe = b => { const cnt = {}; for (let r = b.r + 1; r < b.t; r++) { const f = formula(H, H.celdas.get('C' + r)); if (!f) continue; const m = f.match(/^\+?(?:'([^']+)'|([A-Za-z0-9_ ]+))!\$?[A-Z]+\$?(\d+)/); if (!m) continue; const nm = m[1] || m[2], MM = mapas[nm.trim()] || mapas[nm]; const k = MM && MM.inv.get(+m[3]); if (k) cnt[k] = (cnt[k] || 0) + 1; } return Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || null; };
@@ -6482,6 +6495,29 @@ async function llenarPlantilla(zip, l, d){
       }
     }
     bloques.forEach(b => b.k = mesDe(b));
+    // el mes de cada bloque sale de su fecha de corte (la cartera es del cierre del mes anterior); si las fórmulas apuntan a otra fila, se corrigen
+    {
+      const MMx = {JAN:1,ENE:1,FEB:2,MAR:3,APR:4,ABR:4,MAY:5,JUN:6,JUL:7,AUG:8,AGO:8,SEP:9,OCT:10,NOV:11,DEC:12,DIC:12};
+      const mesEtq = b => { const v = valor(H.celdas.get('B' + b.r)); let y, m, d;
+        if (typeof v === 'number' && v > 30000) { const f = new Date(Math.round((v - 25569) * 864e5)); y = f.getUTCFullYear(); m = f.getUTCMonth() + 1; d = f.getUTCDate(); }
+        else { const x = String(v || '').trim().toUpperCase().match(/^([A-Z]{3})[A-Z]*-(\d{1,2})-(\d{2,4})/); if (!x || !MMx[x[1]]) return null; m = MMx[x[1]]; d = +x[2]; y = +x[3]; if (y < 100) y += 2000; }
+        if (d >= 20) { m++; if (m > 12) { m = 1; y++; } } return `${y}-${m}`; };
+      const sig = k => { const [y, m] = k.split('-').map(Number); return m === 12 ? `${y + 1}-1` : `${y}-${m + 1}`; };
+      let prev = null;
+      for (const b of bloques) {
+        const e = mesEtq(b); if (e) b.k = e; else if (!b.k && prev) b.k = sig(prev); else if (b.k && prev && b.k === prev) b.k = sig(prev);
+        prev = b.k || prev; if (!b.k) continue;
+        const rx1 = /^(\+?)(?:'([^']+)'|([A-Za-z0-9_ ]+))!(\$?)([A-Z]+)(\$?)(\d+)$/; let arr = 0;
+        for (let r = b.r + 1; r < b.t; r++) for (const col of ['C', 'D', 'E', 'F', 'G', 'H']) {
+          const c = H.celdas.get(col + r), fe = c && c.getElementsByTagName('f')[0]; if (!fe) continue;
+          const f = formula(H, c), m = f && f.trim().match(rx1); if (!m) continue;
+          const nm = (m[2] || m[3]).trim(), MM = mapas[nm]; const fila = MM && MM.m.get(b.k); if (!fila || fila === +m[7]) continue;
+          fe.textContent = `${m[1]}${m[2] ? `'${m[2]}'` : m[3].trim()}!${m[4]}${m[5]}${m[6]}${fila}`; ['t', 'si', 'ref'].forEach(x => fe.removeAttribute(x));
+          const v = c.getElementsByTagName('v')[0]; if (v) c.removeChild(v); H.cambio = true; arr++; cambios++;
+        }
+        if (arr) { const [yy, mm] = b.k.split('-').map(Number); avisos.push(`En la hoja ${h.name}, el bloque de ${['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][mm - 1]} ${yy} tomaba datos de filas equivocadas: se corrigieron ${arr} fórmulas.`); }
+      }
+    }
     for (const b of bloques.slice()) {
       if (!b.k) continue; const [y, m] = b.k.split('-').map(Number), cart = d.cartera(`${y}-${String(m).padStart(2, '0')}`); if (!cart) continue;
       for (let r = b.r + 1; r < b.t; r++) { const nm = hojaDe(r); if (!nm) continue; const v = cart[nm.toUpperCase()]; if (v == null) continue; const cur = valor(H.celdas.get('B' + r)); if (cur === v) continue; if (poner(H, 'B' + r, v)) cambios++; }
@@ -6508,6 +6544,26 @@ async function llenarPlantilla(zip, l, d){
     for (const b of bloques.slice(-1)) { if (!b.nuevo) continue;
       if (!b.k) continue; const [y, m] = b.k.split('-').map(Number), cart = d.cartera(`${y}-${String(m).padStart(2, '0')}`); if (!cart) continue;
       for (let r = b.r + 1; r < b.t; r++) { const nm = hojaDe(r); if (!nm) continue; const v = cart[nm.toUpperCase()]; if (v == null) continue; const cur = valor(H.celdas.get('B' + r)); if (cur === v) continue; if (poner(H, 'B' + r, v)) cambios++; }
+    }
+  }
+  // 3b) hoja %: en cada bloque, el total suma todas sus filas, "% de recaudo de cartera" = recaudo / cartera y "% del recaudo" = recaudo / total del bloque (suma 100)
+  for (const h of hojasWb) {
+    const n = h.name.replace(/\s+/g, '').toUpperCase(); if (n !== '%' && n !== '%RECAUDO') continue;
+    const H = await abrir(h), filas = [...H.filas.keys()].sort((a, b) => a - b);
+    // fórmulas compartidas -> explícitas, para poder cambiar una sin dañar las otras
+    { const fx = []; for (const c of H.celdas.values()) { const fe = c.getElementsByTagName('f')[0]; if (fe && fe.getAttribute('t') === 'shared') fx.push([fe, formula(H, c)]); }
+      for (const [fe, t] of fx) { if (t == null) continue; fe.textContent = t; ['t', 'si', 'ref'].forEach(x => fe.removeAttribute(x)); } }
+    const ponF = (ref, f) => { let c = H.celdas.get(ref); if (!c) return; const old = formula(H, c); if (old != null && old.replace(/^\+/, '').replace(/\s/g, '') === f) return;
+      while (c.firstChild) c.removeChild(c.firstChild); if (c.getAttribute('t')) c.removeAttribute('t'); const fe = H.doc.createElementNS(XNS, 'f'); fe.textContent = f; c.appendChild(fe); H.cambio = true; cambios++; };
+    for (const r of filas) {
+      const a = valor(H.celdas.get('A' + r)), c = valor(H.celdas.get('C' + r));
+      if (!(typeof a === 'string' && /^(MOTOS|ELECTRO)$/i.test(a.trim()) && typeof c === 'string' && /sem\s*1/i.test(c))) continue;
+      if (!/DEL RECAUDO/i.test(String(valor(H.celdas.get('J' + r)) || ''))) continue;
+      let t = r + 1; while (H.filas.has(t + 1) && !/^total$/i.test(String(valor(H.celdas.get('A' + t)) || '').trim())) t++;
+      if (!/^total$/i.test(String(valor(H.celdas.get('A' + t)) || '').trim()) || t - r < 2) continue;
+      for (let x = r + 1; x < t; x++) { if (!H.celdas.get('A' + x) || valor(H.celdas.get('A' + x)) == null) continue; ponF('I' + x, `H${x}/B${x}`); ponF('J' + x, `H${x}/$H$${t}`); }
+      for (const col of ['B', 'C', 'D', 'E', 'F', 'G', 'H']) ponF(col + t, `SUM(${col}${r + 1}:${col}${t - 1})`);
+      ponF('I' + t, `H${t}/B${t}`); ponF('J' + t, `H${t}/$H$${t}`);
     }
   }
   // 4) save: recalculate everything when the file opens
@@ -7407,7 +7463,12 @@ async function empezar(){
 }
 document.addEventListener('mm:perm', () => { pestanas(); empezar(); });
 if (document.readyState !== 'loading') pestanas(); else document.addEventListener('DOMContentLoaded', pestanas);
-window.EDADES = {render};
+// cartera de cada punto al cierre del mes anterior (para la hoja % del Excel de recaudos), con el nombre de la hoja de recaudos
+function carteraParaRecaudo(l, k){
+  if (!listo) return null; const pk = mesAntes(k), d = MESD[pk]; if (!d || !d[l]) return null;
+  const o = {}; for (const [c, r] of Object.entries(d[l])) { const h = String(REC_MAP[l][c] || c).toUpperCase(); o[h] = (o[h] || 0) + tot(r); } return o;
+}
+window.EDADES = {render, carteraParaRecaudo};
 })();
 </script>
 
