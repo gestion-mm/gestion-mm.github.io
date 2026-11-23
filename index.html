@@ -6544,10 +6544,17 @@ async function llenarPlantilla(zip, l, d){
         if (arr) { const [yy, mm] = b.k.split('-').map(Number); avisos.push(`En la hoja ${h.name}, el bloque de ${['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][mm - 1]} ${yy} tomaba datos de filas equivocadas: se corrigieron ${arr} fórmulas.`); }
       }
     }
-    for (const b of bloques.slice()) {
-      if (!b.k) continue; const [y, m] = b.k.split('-').map(Number), cart = d.cartera(`${y}-${String(m).padStart(2, '0')}`); if (!cart) continue;
-      for (let r = b.r + 1; r < b.t; r++) { const nm = hojaDe(r); if (!nm) continue; const v = cart[nm.toUpperCase()]; if (v == null) continue; const cur = valor(H.celdas.get('B' + r)); if (cur === v) continue; if (poner(H, 'B' + r, v)) cambios++; }
-    }
+    // en los cuadros que ya existen, la cartera que usted escribió NO se toca; solo se llena si está vacía o si quedó copiada igualita del cuadro anterior
+    bloques.forEach((b, i) => {
+      if (!b.k) return; const [y, m] = b.k.split('-').map(Number), cart = d.cartera(`${y}-${String(m).padStart(2, '0')}`); if (!cart) return;
+      const ant = bloques[i - 1], filaAnt = nombre => { if (!ant) return undefined; for (let r = ant.r + 1; r < ant.t; r++) if (String(valor(H.celdas.get('A' + r)) || '').trim() === nombre) return valor(H.celdas.get('B' + r)); return undefined; };
+      // el cuadro quedó copiado del anterior si casi todas sus carteras son iguales a las del cuadro anterior
+      let iguales = 0, llenas = 0; for (let r = b.r + 1; r < b.t; r++) { const cur = valor(H.celdas.get('B' + r)); if (typeof cur !== 'number') continue; llenas++; if (cur === filaAnt(String(valor(H.celdas.get('A' + r)) || '').trim())) iguales++; }
+      const copiado = llenas > 0 && iguales >= llenas * 0.8;
+      for (let r = b.r + 1; r < b.t; r++) { const nm = hojaDe(r); if (!nm) continue; const v = cart[nm.toUpperCase()]; if (v == null) continue; const cur = valor(H.celdas.get('B' + r)); if (cur === v) continue;
+        if (cur != null && cur !== '' && !copiado) continue;
+        if (poner(H, 'B' + r, v)) cambios++; }
+    });
     // new month block when the app has recaudo for the month after the last block
     const ultB = bloques[bloques.length - 1];
     if (ultB && ultB.k) {
