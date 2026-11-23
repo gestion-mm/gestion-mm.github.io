@@ -6179,7 +6179,7 @@ function vReporte(){
     </div>
     ${DB ? `<div class="rec-acc"><label class="btn primary" for="rec-f-rec">Subir recaudo del sistema</label><input type="file" id="rec-f-rec" accept=".xlsx,.xls,.csv" hidden>
       <label class="btn" for="rec-f-cart">Subir cartera por edades</label><input type="file" id="rec-f-cart" accept=".xlsx,.xls,.csv" hidden>
-      ${DL ? `<button class="btn" id="rec-xls">Descargar Excel</button>${PLMETA.motos && PLMETA.electro ? '<button class="btn primary" id="rec-xls2">Descargar mis Excel (Motos y Electro)</button>' : ''}` : ''}</div><div id="rec-avisos"></div>` : '<div class="banner">Abre la aplicación desde claude.ai para subir y guardar el recaudo.</div>'}
+      ${DL ? `<button class="btn" id="rec-xls">Descargar Excel</button><button class="btn primary" id="rec-xls2">Descargar mis Excel (Motos y Electro)</button>` : ''}</div><div id="rec-avisos"></div>` : '<div class="banner">Abre la aplicación desde claude.ai para subir y guardar el recaudo.</div>'}
     ${CARGA ? vCarga() : ''}
     <div class="tiles" style="margin-top:14px">
       <div class="tile"><div class="n">${money(tot)}</div><div class="l">Recaudo ${LINEAS[l]} · ${MESES[m - 1]} ${y}</div>${!tot ? '<div class="x">Todavía no hay recaudo de este mes.</div>' : ''}</div>
@@ -6236,7 +6236,7 @@ function bind(){
     try { CARGA = await fn(file); } catch (e) { toast({'formato-recaudo': 'Ese archivo no parece el informe de recaudo del sistema: no tiene las columnas CUENTA y VALOR_RECAUDO.', 'formato-cartera': 'Ese archivo no parece la cartera por edades: no tiene las columnas CUENTA y T. CARTERA.', 'formato-historico': 'No encontré hojas con meses y semanas en ese archivo.', xlsx: 'No se pudo cargar el lector de Excel. Recarga la página.'}[e.message] || 'No se pudo leer el archivo.'); }
     render(); const p = q('.rec-carga'); if (p) p.scrollIntoView({block: 'start', behavior: 'smooth'}); }; };
   abrir('#rec-f-rec', leerSistema); abrir('#rec-f-cart', leerCartera); abrir('#rec-f-hist', leerHistorico);
-  const xb = q('#rec-xls'); if (xb) xb.onclick = () => descargar(LIN);
+  const xb = q('#rec-xls'); if (xb) xb.onclick = () => { const ab = q('#rec-avisos'); if (ab) ab.innerHTML = ''; descargar(LIN); };
   const xb2 = q('#rec-xls2'); if (xb2) xb2.onclick = async () => { const ab = q('#rec-avisos'); if (ab) ab.innerHTML = ''; xb2.disabled = true; xb2.textContent = 'Preparando sus 2 Excel…';
     try { await descargar('motos'); await new Promise(r => setTimeout(r, 900)); await descargar('electro'); } finally { xb2.disabled = false; xb2.textContent = 'Descargar mis Excel (Motos y Electro)'; } };
   document.querySelectorAll('#rec-main [data-pl]').forEach(inp => inp.onchange = async () => { const file = inp.files[0], l = inp.dataset.pl; inp.value = ''; if (!file) return;
@@ -6318,6 +6318,12 @@ async function descargar(lin){
       toast(`Excel de ${LINEAS[l]} descargado con tu formato. ${res.cambios ? res.cambios + ' celdas actualizadas.' : 'No había valores nuevos.'} ${res.avisos.join(' ')}`);
     } catch (e) { if (e && e.code !== 'declined') toast(e && e.message === 'incompleta' ? 'La plantilla guardada está incompleta. Súbela de nuevo en "Metas y plantillas de Excel".' : 'No se pudo preparar el Excel.'); console.error(e); }
     if (b) { b.disabled = false; b.textContent = 'Descargar Excel'; }
+    return;
+  }
+  // sin plantilla guardada de esa línea: no se arma un Excel con otro formato sin avisar
+  if (lin !== 'sencillo') {
+    const ab = q('#rec-avisos'), txt = `No tiene guardada la plantilla de <b>${LINEAS[LX]}</b>. Para que salga con su formato (hoja %, TOTAL, etc.), súbala en <b>"Metas y plantillas de Excel"</b> → ${LINEAS[LX]} → Subir.`;
+    if (ab) ab.innerHTML += `<div class="panel small" style="margin-top:8px;padding:8px 12px;border-left:4px solid #e00000">${txt}</div>`; else toast(txt.replace(/<[^>]+>/g, ''));
     return;
   }
   if (typeof XLSX === 'undefined') return;
@@ -6486,13 +6492,14 @@ async function llenarPlantilla(zip, l, d){
     if (n) avisos.push(`Se corrigió la hoja ${h.name} de ${yU}: cada mes ahora suma las semanas de todos los puntos (${pts.length} hojas).`);
   }
   // 3) % sheet: cartera of each point; adds the block of a new month by copying the last one
+  let hayPct = false;
   for (const h of hojasWb) {
-    const n = h.name.replace(/\s+/g, '').toUpperCase(); if (n !== '%' && n !== '%RECAUDO') continue;
+    const n = h.name.replace(/\s+/g, '').toUpperCase(); if (!n.includes('%')) continue; hayPct = true;
     const H = await abrir(h), filas = [...H.filas.keys()].sort((a, b) => a - b), bloques = [];
     { const fx = []; for (const c of H.celdas.values()) { const fe = c.getElementsByTagName('f')[0]; if (fe && fe.getAttribute('t') === 'shared') fx.push([fe, formula(H, c)]); }
       for (const [fe, t] of fx) { if (t == null) continue; fe.textContent = t; ['t', 'si', 'ref'].forEach(x => fe.removeAttribute(x)); } }
     for (const r of filas) { const a = valor(H.celdas.get('A' + r)), c = valor(H.celdas.get('C' + r));
-      if (typeof a === 'string' && /^(MOTOS|ELECTRO)$/i.test(a.trim()) && typeof c === 'string' && /sem\s*1/i.test(c)) { let t = r + 1; while (H.filas.has(t + 1) && !/^total$/i.test(String(valor(H.celdas.get('A' + t)) || '').trim())) t++; bloques.push({r, t}); } }
+      if (typeof a === 'string' && a.trim() && !/^total$/i.test(a.trim()) && typeof c === 'string' && /^sem(ana)?\s*1$/i.test(c.trim())) { let t = r + 1; while (H.filas.has(t + 1) && !/^total$/i.test(String(valor(H.celdas.get('A' + t)) || '').trim())) t++; bloques.push({r, t}); } }
     const mesDe = b => { const cnt = {}; for (let r = b.r + 1; r < b.t; r++) { const f = formula(H, H.celdas.get('C' + r)); if (!f) continue; const m = f.match(/^\+?(?:'([^']+)'|([A-Za-z0-9_ ]+))!\$?[A-Z]+\$?(\d+)/); if (!m) continue; const nm = m[1] || m[2], MM = mapas[nm.trim()] || mapas[nm]; const k = MM && MM.inv.get(+m[3]); if (k) cnt[k] = (cnt[k] || 0) + 1; } return Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]?.[0] || null; };
     const hojaDe = (r) => { const f = formula(H, H.celdas.get('C' + r)); const m = f && f.match(/^\+?(?:'([^']+)'|([A-Za-z0-9_ ]+))!/); return m ? (m[1] || m[2]).trim() : null; };
     // repair: a row must take its data from the sheet of its own point (e.g. "Casa M/bano" -> CASAMON, not PUENUE)
@@ -6585,9 +6592,10 @@ async function llenarPlantilla(zip, l, d){
       for (let r = b.r + 1; r < b.t; r++) { const nm = hojaDe(r); if (!nm) continue; const v = cart[nm.toUpperCase()]; if (v == null) continue; const cur = valor(H.celdas.get('B' + r)); if (cur === v) continue; if (poner(H, 'B' + r, v)) cambios++; }
     }
   }
+  if (!hayPct) avisos.push('Este Excel no tiene una hoja de porcentajes (con % en el nombre), así que no se agregó el cuadro del mes.');
   // 3b) hoja %: en cada bloque, el total suma todas sus filas, "% de recaudo de cartera" = recaudo / cartera y "% del recaudo" = recaudo / total del bloque (suma 100)
   for (const h of hojasWb) {
-    const n = h.name.replace(/\s+/g, '').toUpperCase(); if (n !== '%' && n !== '%RECAUDO') continue;
+    const n = h.name.replace(/\s+/g, '').toUpperCase(); if (!n.includes('%')) continue;
     const H = await abrir(h), filas = [...H.filas.keys()].sort((a, b) => a - b);
     // fórmulas compartidas -> explícitas, para poder cambiar una sin dañar las otras
     { const fx = []; for (const c of H.celdas.values()) { const fe = c.getElementsByTagName('f')[0]; if (fe && fe.getAttribute('t') === 'shared') fx.push([fe, formula(H, c)]); }
@@ -6596,7 +6604,7 @@ async function llenarPlantilla(zip, l, d){
       while (c.firstChild) c.removeChild(c.firstChild); if (c.getAttribute('t')) c.removeAttribute('t'); const fe = H.doc.createElementNS(XNS, 'f'); fe.textContent = f; c.appendChild(fe); H.cambio = true; cambios++; };
     for (const r of filas) {
       const a = valor(H.celdas.get('A' + r)), c = valor(H.celdas.get('C' + r));
-      if (!(typeof a === 'string' && /^(MOTOS|ELECTRO)$/i.test(a.trim()) && typeof c === 'string' && /sem\s*1/i.test(c))) continue;
+      if (!(typeof a === 'string' && a.trim() && !/^total$/i.test(a.trim()) && typeof c === 'string' && /^sem(ana)?\s*1$/i.test(c.trim()))) continue;
       if (!/DEL RECAUDO/i.test(String(valor(H.celdas.get('J' + r)) || ''))) continue;
       let t = r + 1; while (H.filas.has(t + 1) && !/^total$/i.test(String(valor(H.celdas.get('A' + t)) || '').trim())) t++;
       if (!/^total$/i.test(String(valor(H.celdas.get('A' + t)) || '').trim()) || t - r < 2) continue;
