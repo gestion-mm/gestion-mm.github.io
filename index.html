@@ -6550,7 +6550,9 @@ async function llenarPlantilla(zip, l, d){
     const ultB = bloques[bloques.length - 1];
     if (ultB && ultB.k) {
       const [y0, m0] = ultB.k.split('-').map(Number), y1 = m0 === 12 ? y0 + 1 : y0, m1 = m0 === 12 ? 1 : m0 + 1;
-      const hay = d.codigos.some(c => { const w = d.vals(y1, m1, c); return w && w.some(v => v); });
+      // se agrega el cuadro del mes siguiente apenas ese mes empieza (aunque todavía no haya recaudo), o cuando ya hay recaudo de ese mes
+      const hoyD = new Date(), yaEmpezo = y1 < hoyD.getFullYear() || (y1 === hoyD.getFullYear() && m1 <= hoyD.getMonth() + 1);
+      const hay = yaEmpezo || d.codigos.some(c => { const w = d.vals(y1, m1, c); return w && w.some(v => v); });
       if (hay) {
         const deltas = {}; for (const [nm, MM] of Object.entries(mapas)) { const a = MM.m.get(`${y0}-${m0}`), b = MM.m.get(`${y1}-${m1}`); if (a && b) deltas[nm] = b - a; }
         const etq = ultB.r - 1, conEtq = typeof valor(H.celdas.get('A' + etq)) === 'string' && valor(H.celdas.get('B' + etq)) == null && valor(H.celdas.get('C' + etq)) == null;
