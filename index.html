@@ -6460,6 +6460,30 @@ async function llenarPlantilla(zip, l, d){
       poner(H, 'A' + dest, y); avisos.push(`Se agregó el bloque ${y} en la hoja ${h.name}.`);
     }
   }
+  // 2b) hoja TOTAL: en el último año, cada mes suma la fila de ese mes de TODAS las hojas de los puntos (semana por semana y el total)
+  for (const h of hojasWb) {
+    if (!['TOTAL', 'TOTALMES'].includes(h.name.replace(/\s+/g, '').toUpperCase())) continue;
+    const T = await abrir(h), MT = mapaMeses(T); if (!MT.anios.length) continue;
+    { const fx = []; for (const c of T.celdas.values()) { const fe = c.getElementsByTagName('f')[0]; if (fe && fe.getAttribute('t') === 'shared') fx.push([fe, formula(T, c)]); }
+      for (const [fe, t] of fx) { if (t == null) continue; fe.textContent = t; ['t', 'si', 'ref'].forEach(x => fe.removeAttribute(x)); } }
+    const yU = MT.anios[MT.anios.length - 1].y, pts = [];
+    for (const g of hojasWb) { const nm = g.name.trim(), N = nm.toUpperCase().replace(/\s+/g, ''); if (EXCL.has(N) || N === 'TOTAL' || N === 'TOTALMES' || N.startsWith('%')) continue;
+      const G = await abrir(g), M = mapas[g.name] || mapaMeses(G); if ([...Array(12)].some((_, i) => M.m.has(`${yU}-${i + 1}`))) pts.push({nm: g.name, M}); }
+    if (!pts.length) continue;
+    const refS = nm => /[^A-Za-z0-9_]/.test(nm) || /^\d/.test(nm) || /^[A-Za-z]{1,3}\d+$/.test(nm) ? `'${nm}'` : nm;
+    let n = 0;
+    for (let m = 1; m <= 12; m++) { const r = MT.m.get(`${yU}-${m}`); if (!r) continue;
+      for (const col of ['B', 'C', 'D', 'E', 'F', 'G']) {
+        const partes = pts.filter(p => p.M.m.has(`${yU}-${m}`)).map(p => `${refS(p.nm)}!${col}${p.M.m.get(`${yU}-${m}`)}`); if (!partes.length) continue;
+        const f = '+' + partes.join('+');
+        let c = T.celdas.get(col + r); if (!c) c = nuevaCelda(T, col + r, (T.celdas.get('B' + r) || {getAttribute: () => null}).getAttribute('s'));
+        const old = formula(T, c); if (old != null && old.replace(/\s/g, '') === f) continue;
+        while (c.firstChild) c.removeChild(c.firstChild); if (c.getAttribute('t')) c.removeAttribute('t');
+        const fe = T.doc.createElementNS(XNS, 'f'); fe.textContent = f; c.appendChild(fe); T.cambio = true; n++; cambios++;
+      }
+    }
+    if (n) avisos.push(`Se corrigió la hoja ${h.name} de ${yU}: cada mes ahora suma las semanas de todos los puntos (${pts.length} hojas).`);
+  }
   // 3) % sheet: cartera of each point; adds the block of a new month by copying the last one
   for (const h of hojasWb) {
     const n = h.name.replace(/\s+/g, '').toUpperCase(); if (n !== '%' && n !== '%RECAUDO') continue;
