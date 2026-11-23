@@ -6531,15 +6531,23 @@ async function llenarPlantilla(zip, l, d){
     // el mes de cada bloque sale de su fecha de corte (la cartera es del cierre del mes anterior); si las fórmulas apuntan a otra fila, se corrigen
     {
       const MMx = {JAN:1,ENE:1,FEB:2,MAR:3,APR:4,ABR:4,MAY:5,JUN:6,JUL:7,AUG:8,AGO:8,SEP:9,OCT:10,NOV:11,DEC:12,DIC:12};
+      // el mes del cuadro: primero el rótulo de arriba ("Oct", "Nov"); el año sale de la fecha de corte de al lado
+      const MESN = {ENE:1,JAN:1,FEB:2,MAR:3,ABR:4,APR:4,MAY:5,JUN:6,JUL:7,AGO:8,AUG:8,SEP:9,OCT:10,NOV:11,DIC:12,DEC:12};
+      const mesRotulo = b => { const t = String(valor(H.celdas.get('A' + (b.r - 1))) || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); const x = t.match(/^([A-Z]{3})[A-Z]*\.?$/); return x && MESN[x[1]] || null; };
       const mesEtq = b => { const v = valor(H.celdas.get('B' + b.r)); let y, m, d;
         if (typeof v === 'number' && v > 30000) { const f = new Date(Math.round((v - 25569) * 864e5)); y = f.getUTCFullYear(); m = f.getUTCMonth() + 1; d = f.getUTCDate(); }
         else { const x = String(v || '').trim().toUpperCase().match(/^([A-Z]{3})[A-Z]*-(\d{1,2})-(\d{2,4})/); if (!x || !MMx[x[1]]) return null; m = MMx[x[1]]; d = +x[2]; y = +x[3]; if (y < 100) y += 2000; }
-        if (d >= 20) { m++; if (m > 12) { m = 1; y++; } } return `${y}-${m}`; };
+        if (d >= 20) { m++; if (m > 12) { m = 1; y++; } }
+        const mr = mesRotulo(b); if (mr && mr !== m) { if (mr === 1 && m === 12) y++; else if (mr === 12 && m === 1) y--; m = mr; }
+        return `${y}-${m}`; };
       const sig = k => { const [y, m] = k.split('-').map(Number); return m === 12 ? `${y + 1}-1` : `${y}-${m + 1}`; };
       let prev = null;
       for (const b of bloques) {
-        const e = mesEtq(b); if (e) b.k = e; else if (!b.k && prev) b.k = sig(prev); else if (b.k && prev && b.k === prev) b.k = sig(prev);
-        prev = b.k || prev; if (!b.k) continue;
+        let e = mesEtq(b); const mr = mesRotulo(b);
+        if (!e && mr && prev) { const [py, pm] = prev.split('-').map(Number); e = `${mr <= pm ? py + 1 : py}-${mr}`; }
+        b.seguro = !!e;
+        if (e) b.k = e; else if (!b.k && prev) b.k = sig(prev); else if (b.k && prev && b.k === prev) b.k = sig(prev);
+        prev = b.k || prev; if (!b.k || !b.seguro) continue;
         const rx1 = /^(\+?)(?:'([^']+)'|([A-Za-z0-9_ ]+))!(\$?)([A-Z]+)(\$?)(\d+)$/; let arr = 0;
         for (let r = b.r + 1; r < b.t; r++) for (const col of ['C', 'D', 'E', 'F', 'G', 'H']) {
           const c = H.celdas.get(col + r), fe = c && c.getElementsByTagName('f')[0]; if (!fe) continue;
