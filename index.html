@@ -2612,12 +2612,14 @@ function resumenJefe(r){
     <h3 style="margin:0 0 10px">Resumen para aprobar el avalúo</h3>
     <div id="resFotos" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px"></div>
     <div class="tbl-wrap"><table><tbody>
+      ${fila('Punto de donde es la moto', esc(r.pdv || '—'))}
+      ${r.trasladada === 'Sí' ? fila('<span class="rojo">La moto fue trasladada</span>', `Está en ${esc(r.trHasta || '—')}`, `De ${esc(r.trDesde || r.pdv || '—')} a ${esc(r.trHasta || '—')}${r.trFecha ? ' el ' + fd(r.trFecha) : ''}${r.trRecibe ? ' · la recibió ' + esc(r.trRecibe) : ''}`) : fila('¿Fue trasladada a otro punto?', 'No')}
       ${fila('Precio de la moto de contado', m(r.rtValorContado))}
       ${fila('Lo que quedó debiendo del valor de contado', signo(a.deudaCapital))}
       ${fila('Lo que quedó debiendo de la financiación', signo(a.deudaCuotas), a.refi ? `Con la nueva financiación de ${a.refi.meses} meses` : '')}
       ${fila('Valor de retoma propuesto', m(r.avValorRetoma))}
       ${fila('Valor de venta propuesto (con todo)', m(r.avValorSugerido))}
-      ${fila('Repuestos que se va a llevar (peritaje)', m(a.rep), (r.avRepuestos || []).length ? `${(r.avRepuestos || []).length} repuestos` : 'Sin cotización de repuestos')}
+      ${fila('Repuestos que se va a llevar (peritaje)', m(a.rep), (r.avRepuestos || []).length ? `${(r.avRepuestos || []).length} repuesto${(r.avRepuestos || []).length === 1 ? '' : 's'}` : 'Sin cotización de repuestos')}
       <tr style="border-top:2px solid #cfd6e4"><td><b>${a.saldoCliente > 0 ? '<span class="rojo">Lo que queda debiendo el cliente</span>' : a.saldoCliente < 0 ? '<span style="color:#1e40af">Saldo a favor del cliente</span>' : 'El cliente queda a paz y salvo'}</b><div class="small muted">Lo que debe de la financiación + papeles y otros gastos − valor de retoma</div></td><td class="num"><b>${a.saldoCliente > 0 ? `<span class="rojo">${m(a.saldoCliente)}</span>` : a.saldoCliente < 0 ? `<span style="color:#1e40af">(${m(-a.saldoCliente)})</span>` : '$0'}</b></td></tr>
     </tbody></table></div>
     <div id="aprobSlot" style="margin-top:12px"></div>
@@ -3492,6 +3494,11 @@ async function marcarVistas(ids){
   catch (e) { toast('No se pudo guardar.'); }
 }
 /* ---------- Campanita: avalúos por aprobar (jefe) y motos que pasaron a peritaje (Kenny) ---------- */
+const RESP_DIAS = 15;
+function respVista(k){ try { if (S.owner) return (S.alVistas || {})['av:' + k] || ''; return localStorage.getItem('mmresp:' + k) || ''; } catch (e) { return ''; } }
+function respMarcar(k){ if (S.owner && !S.readOnly) { marcarVistas(['av:' + k]); return; } try { localStorage.setItem('mmresp:' + k, new Date().toISOString()); } catch (e) {} updBell(); }
+function respNueva(at, k){ return !!at && (Date.now() - new Date(at).getTime()) < RESP_DIAS * 864e5 && respVista(k) < at; }
+const veResp = () => S.owner || (!S.readOnly && !isJefe());
 function campanaItems(){
   let all = []; try { all = records(); } catch (e) { return {aval: [], per: []}; }
   const aval = isJefe() ? all.filter(r => r.estado === 'Avalúo' && r.avEstado === 'Pendiente')
@@ -3502,12 +3509,16 @@ function campanaItems(){
   const eaval = window.ELE ? ELE.pend() : [];
   try { if (typeof cIniciar === 'function' && S.owner) cIniciar(); } catch (e) {}
   const saldo = S.owner && window.CAR && CAR.sinSaldo() ? [CAR.aviso()] : [];
-  return {aval, per, eaval, saldo};
+  const resp = veResp() ? all.filter(r => (r.avEstado === 'Aprobado' || r.avEstado === 'Devuelto') && r.avAprobadoPor !== S.uid && respNueva(r.avAprobadoEn, r.id))
+    .sort((a, b) => String(b.avAprobadoEn).localeCompare(String(a.avAprobadoEn))) : [];
+  let eresp = []; try { eresp = veResp() && window.ELE && ELE.todos ? ELE.todos().filter(r => (r.retEstado === 'Aprobado' || r.retEstado === 'Devuelto') && respNueva(r.retAprobadoEn, 'e:' + r.id))
+    .sort((a, b) => String(b.retAprobadoEn).localeCompare(String(a.retAprobadoEn))) : []; } catch (e) {}
+  return {aval, per, eaval, saldo, resp, eresp};
 }
 function updBell(){
   const b = document.getElementById('mmBell'); if (!b) return;
-  const {aval, per, eaval, saldo} = campanaItems(), n = aval.length + per.length + eaval.length + saldo.length;
-  b.hidden = !(isJefe() || S.owner) || S.needLogin || S.pendiente;
+  const {aval, per, eaval, saldo, resp, eresp} = campanaItems(), n = aval.length + per.length + eaval.length + saldo.length + resp.length + eresp.length;
+  b.hidden = !(isJefe() || S.owner || resp.length || eresp.length) || S.needLogin || S.pendiente;
   const c = document.getElementById('mmBellN'); c.hidden = !n; c.textContent = n > 99 ? '99+' : n;
   b.classList.toggle('on', n > 0);
   b.setAttribute('aria-label', n ? `Avisos: ${n} pendientes` : 'Avisos: nada pendiente');
@@ -3515,10 +3526,16 @@ function updBell(){
 }
 function drawBell(){
   const p = document.getElementById('mmBellPanel'); if (!p) return;
-  const {aval, per, eaval, saldo} = campanaItems();
+  const {aval, per, eaval, saldo, resp, eresp} = campanaItems();
   const it = (r, sub, tipo) => `<button type="button" class="bell-it" data-bell="${tipo}" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> ${plate(r.placa)}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')}${sub ? ' · ' + sub : ''}</span></button>`;
   let h = '';
   if (saldo.length) h += `<div class="bell-h">Lector de tarjetas <span class="chip pill-red">sin saldo</span></div><button type="button" class="bell-it" id="bellSaldo"><span class="bell-t"><b>Se acabó el saldo del lector</b></span><span class="bell-s">Recárguelo en console.anthropic.com → Billing · ${esc(fdt(saldo[0].at))}</span></button>`;
+  if (resp.length + eresp.length) {
+    const est = (ok, v, at) => (ok ? `<b style="color:#1b7a3d">Aprobado</b> · retoma ${money(v) || '—'}` : '<b class="rojo">Devuelto para corregir</b>') + ' · ' + esc(fdt(at));
+    h += `<div class="bell-h">Respuestas del jefe <span class="chip pill-ok">${resp.length + eresp.length}</span>${resp.length + eresp.length > 1 ? '<button type="button" class="bell-todas" id="bellRespTodas">Marcar todas vistas</button>' : ''}</div>` +
+      resp.map(r => it(r, 'avalúo ' + est(r.avEstado === 'Aprobado', r.avValorAprobado, r.avAprobadoEn), 'resp')).join('') +
+      eresp.map(r => `<button type="button" class="bell-it" data-bell="eresp" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · electro ${est(r.retEstado === 'Aprobado', r.retAprobado, r.retAprobadoEn)}</span></button>`).join('');
+  }
   if (isJefe()) h += `<div class="bell-h">Avalúos por aprobar <span class="chip ${aval.length ? 'pill-warn' : ''}">${aval.length}</span></div>` +
     (aval.map(r => it(r, `retoma propuesta ${money(r.avValorRetoma) || '—'}`, 'aval')).join('') || '<p class="bell-v">No hay avalúos esperando su aprobación.</p>');
   if (isJefe()) h += `<div class="bell-h">Retomas de electrodomésticos por aprobar <span class="chip ${eaval.length ? 'pill-warn' : ''}">${eaval.length}</span></div>` +
@@ -3529,11 +3546,15 @@ function drawBell(){
   p.querySelectorAll('[data-bell]').forEach(x => x.onclick = () => abrirDesdeBell(x.dataset.id, x.dataset.bell));
   const bs = p.querySelector('#bellSaldo'); if (bs) bs.onclick = () => { cerrarBell(); try { go('car'); } catch (e) {} };
   const t = p.querySelector('#bellTodas'); if (t) t.onclick = () => { marcarVistas(per.map(x => x.r.id)); cerrarBell(); };
+  const rt = p.querySelector('#bellRespTodas'); if (rt) rt.onclick = () => { const ks = [...resp.map(r => r.id), ...eresp.map(r => 'e:' + r.id)];
+    if (S.owner && !S.readOnly) marcarVistas(ks.map(k => 'av:' + k)); else { ks.forEach(k => { try { localStorage.setItem('mmresp:' + k, new Date().toISOString()); } catch (e) {} }); updBell(); } cerrarBell(); };
 }
 function cerrarBell(){ const p = document.getElementById('mmBellPanel'); if (p) p.hidden = true; const b = document.getElementById('mmBell'); if (b) b.setAttribute('aria-expanded', 'false'); }
 function abrirDesdeBell(id, tipo){
   cerrarBell();
   if (tipo === 'eaval') { if (window.ELE) ELE.abrir(id, 'aprob'); return; }
+  if (tipo === 'eresp') { respMarcar('e:' + id); if (window.ELE) ELE.abrir(id, 'aprob'); return; }
+  if (tipo === 'resp') { respMarcar(id); openMoto(id); return; }
   openMoto(id);
   if (tipo === 'per' && S.owner && !S.readOnly) marcarVistas([id]);
   // lleva directo a la parte que toca: la aprobación del avalúo o el peritaje
@@ -3925,6 +3946,7 @@ window.ELE = {
   pdvs(){ return [...new Set([...eLista().map(r => r.pdv).filter(Boolean), ...E_PDVS])]; },
   render: eRender, abrir: eAbrir, iniciar: eIniciar,
   pend: () => isJefe() ? eLista().filter(eRetPend) : [],
+  todos: () => eLista(),
   resumen(){ const all = eLista(); return {cargado: E.cargado, enSala: all.filter(r => r.estado === 'En sala').length, venc: all.filter(eVencido).length, pend: all.filter(eRetPend).length, venta: all.filter(r => r.estado === 'Para la venta').length, jefe: isJefe(), plazo: E_PLAZO, puede: ePuedeEditar()}; }
 };
 
