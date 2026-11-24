@@ -6091,7 +6091,7 @@ function toast(m){ const t = document.createElement('div'); t.className = 'toast
 let DB = null, DL = null, listo = false;
 let CFG = {cuentas: {}, nombres: {motos: {}, electro: {}}, orden: {motos: [], electro: []}, meta: {}};
 let CORTES = {}, DOCS = {}, CART = {};
-let LIN = 'motos', Y = null, M = null, CARGA = null, GRAFON = false, GMODO = 'mes';
+let LIN = 'motos', Y = null, M = null, CARGA = null, GRAFON = false, GMODO = 'mes', RDESDE = null, RHASTA = null, RA = null, RB = null;
 
 /* ---------- semanas del mes: lunes a domingo; una semana de menos de 4 días hábiles se une a la vecina ---------- */
 function semanasRegla(y, m){
@@ -6347,15 +6347,19 @@ function vReporte(){
 /* ---------- Gráficas: recaudo de los últimos 3 años ---------- */
 function vGraf(){
   const G = window.GRAF, l = LIN, hoy = new Date(), hk = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}`;
-  const [uy, um] = ultimoMes(l), fin = `${uy}-${pad(um)}`, parcial = fin === hk;
   const sp = key => key.split('-').map(Number);
+  const todos = []; for (const y of anios(l).slice().sort()) for (let m = 1; m <= 12; m++) if (totMes(l, y, m)) todos.push(`${y}-${pad(m)}`);
+  const [ly, lm] = ultimoMes(l), ult = `${ly}-${pad(lm)}`;
+  if (!RHASTA || !todos.includes(RHASTA)) RHASTA = ult;
+  const RDES = RDESDE && RDESDE <= RHASTA && todos.includes(RDESDE) ? RDESDE : (G.sumar(RHASTA, -36) < (todos[0] || RHASTA) ? (todos[0] || RHASTA) : G.sumar(RHASTA, -36));
+  const fin = RHASTA, [uy, um] = sp(fin), parcial = fin === hk;
   const st = semTot(l, uy, um); let k = 0; st.forEach((v, i) => { if (+v) k = i + 1; }); k = Math.max(1, k);
   const tm = key => { const [y, m] = sp(key); return totMes(l, y, m); };
   const tk = key => { const [y, m] = sp(key); return sum(semTot(l, y, m).slice(0, k)); };
   const prev6 = G.rango(G.sumar(fin, -1), 6).filter(x => tm(x)), avg = a => a.length ? sum(a) / a.length : 0;
   const cmpV = x => parcial ? tk(x) : tm(x), act = cmpV(fin);
   const est = parcial ? act + avg(prev6.map(x => tm(x) - tk(x))) : null;
-  const modo = parcial ? GMODO : 'mes', ks = G.rango(fin, 37), ME = MESES[um - 1].toLowerCase(), r = l === 'electro' ? ' r' : '';
+  const modo = parcial ? GMODO : 'mes', ks = (() => { const o = []; for (let x = RDES; x <= fin; x = G.sumar(x, 1)) o.push(x); return o; })(), ME = MESES[um - 1].toLowerCase(), r = l === 'electro' ? ' r' : '';
   const sem = parcial ? `las ${k === 1 ? 'primera semana' : 'primeras ' + k + ' semanas'}` : '';
   const cols = ks.map(x => { const [y, m] = sp(x), v = modo === 'sem' ? tk(x) : tm(x), hi = m === um ? ' hi' : '';
     if (x === fin && parcial && modo === 'mes') return {segs: [{v: act, cls: 'b' + r + ' parc'}, {v: Math.max(0, est - act), cls: 'b' + r + ' est'}], valor: G.M(act), titulo: `${MESES[m - 1]} ${y}: ${money(act)} hasta la semana ${k} · estimado del mes ${money(est)}`};
@@ -6385,6 +6389,10 @@ function vGraf(){
       <div class="rec-ctrl"><div class="seg" role="tablist" aria-label="Línea">${Object.keys(LINEAS).map(x => `<button role="tab" aria-selected="${x === l}" data-lin="${x}">${LINEAS[x]}</button>`).join('')}</div>
         <button type="button" class="btn" id="rec-graf-x">Volver al informe</button></div>
     </div>
+    <div class="panel" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end">
+      <div class="field" style="margin:0"><label for="rec-g-desde">Gráfica desde</label><select id="rec-g-desde">${todos.filter(x => x <= fin).map(x => `<option value="${x}" ${x === RDES ? 'selected' : ''}>${MESES[sp(x)[1] - 1]} ${sp(x)[0]}</option>`).join('')}</select></div>
+      <div class="field" style="margin:0"><label for="rec-g-hasta">hasta</label><select id="rec-g-hasta">${todos.map(x => `<option value="${x}" ${x === fin ? 'selected' : ''}>${MESES[sp(x)[1] - 1]} ${sp(x)[0]}</option>`).join('')}</select></div>
+      <span class="small muted">${ks.length} meses</span></div>
     <div style="margin-top:12px">${cards}</div>
     <div class="panel" style="margin-top:14px;display:grid;gap:8px">
       <div class="rec-top" style="align-items:center"><h3 style="margin:0">Recaudo por mes · ${G.etq(ks[0])} a ${G.etq(fin)}</h3>
@@ -6396,6 +6404,19 @@ function vGraf(){
     ${pcs.filter(v => v != null).length > 1 ? `<div class="panel" style="margin-top:14px;display:grid;gap:8px"><h3 style="margin:0">% de recaudo de la cartera</h3><p class="small muted" style="margin:0">Recaudo del mes dividido por la cartera del cierre del mes anterior.</p>
       ${G.lineas({labels: ks.map(G.etq), series: [{vals: pcs, cls: l === 'electro' ? 'r' : 'a'}], fmt: v => fpor(v), titulos: ks.map((x, i) => pcs[i] == null ? G.etq(x) : `${G.etq(x)}: ${fpor(pcs[i])}`), aria: 'Porcentaje de recaudo de la cartera'})}</div>` : ''}
     <div class="panel" style="margin-top:14px"><h3 style="margin:0 0 8px">Lo que dicen los números</h3><ul class="glec">${lec.map(x => `<li>${x}</li>`).join('')}</ul></div>
+    ${(() => { if (!RA || !todos.includes(RA)) RA = fin; if (!RB || !todos.includes(RB)) RB = todos[todos.indexOf(RA) - 1] || todos[0];
+      const wa = semTot(l, ...sp(RA)), wb = semTot(l, ...sp(RB)), nW = Math.max(1, ...[wa, wb].map(w => { let n = 0; w.forEach((v, i) => { if (+v) n = i + 1; }); return n; }));
+      const opt = sel => todos.map(x => `<option value="${x}" ${x === sel ? 'selected' : ''}>${MESES[sp(x)[1] - 1]} ${sp(x)[0]}${x === hk ? ' (en curso)' : ''}</option>`).join('');
+      const fila = (n, a, b, neg) => { const d = a - b; return `<tr${neg ? ' style="font-weight:700"' : ''}><td>${n}</td><td class="num">${money(a)}</td><td class="num">${money(b)}</td><td class="num"><span class="${!d ? 'muted' : d > 0 ? 'okc' : 'rojo'}">${d > 0 ? '+' : d < 0 ? '−' : ''}${money(Math.abs(d))}</span></td><td class="num"><span class="${!b || !d ? 'muted' : d > 0 ? 'okc' : 'rojo'}">${b ? G.P(pct(a, b)) : '—'}</span></td></tr>`; };
+      const cods = [...new Set([...codigos(l, sp(RA)[0]), ...codigos(l, sp(RB)[0])])];
+      const pts = cods.map(c => [nombre(l, c), totMes(l, ...sp(RA), c), totMes(l, ...sp(RB), c)]).filter(([, a, b]) => a || b);
+      return `<div class="panel" style="margin-top:14px;display:grid;gap:10px"><h3 style="margin:0">Comparar dos meses</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end"><div class="field" style="margin:0"><label for="rec-g-a">Mes</label><select id="rec-g-a">${opt(RA)}</select></div>
+          <div class="field" style="margin:0"><label for="rec-g-b">frente a</label><select id="rec-g-b">${opt(RB)}</select></div></div>
+        <div class="tbl-wrap"><table class="rec-tab"><thead><tr><th></th><th class="num">${MESES[sp(RA)[1] - 1]} ${sp(RA)[0]}</th><th class="num">${MESES[sp(RB)[1] - 1]} ${sp(RB)[0]}</th><th class="num">Diferencia</th><th class="num">Cambio</th></tr></thead>
+          <tbody>${[...Array(nW)].map((_, i) => fila('Semana ' + (i + 1), +wa[i] || 0, +wb[i] || 0)).join('')}${fila('Total del mes', sum(wa), sum(wb), true)}</tbody></table></div>
+        ${RA === hk || RB === hk ? '<p class="small muted" style="margin:0">Un mes en curso todavía no tiene todas sus semanas; compare semana por semana.</p>' : ''}
+        <details class="hist-box"><summary class="btn small">Ver por punto de venta</summary><div class="tbl-wrap" style="margin-top:8px"><table class="rec-tab"><thead><tr><th>Punto</th><th class="num">${MESES[sp(RA)[1] - 1]} ${sp(RA)[0]}</th><th class="num">${MESES[sp(RB)[1] - 1]} ${sp(RB)[0]}</th><th class="num">Diferencia</th><th class="num">Cambio</th></tr></thead><tbody>${pts.map(([n, a, b]) => fila(esc(n), a, b)).join('')}</tbody></table></div></details></div>`; })()}
     <div class="tbl-wrap" style="margin-top:14px"><table class="rec-tab"><thead><tr><th>Mes</th><th class="num">Recaudo</th><th class="num">Mismo mes del año anterior</th><th class="num">Cambio</th><th class="num">% de la cartera</th></tr></thead><tbody>${tbl}</tbody></table></div>`;
 }
 function vAnio(l, y){
@@ -6424,10 +6445,11 @@ function render(){
   bind();
 }
 function bind(){
-  document.querySelectorAll('#rec-main [data-lin]').forEach(b => b.onclick = () => { LIN = b.dataset.lin; render(); });
+  document.querySelectorAll('#rec-main [data-lin]').forEach(b => b.onclick = () => { LIN = b.dataset.lin; RA = RB = null; render(); });
   const gb = q('#rec-graf'); if (gb) gb.onclick = () => { GRAFON = true; render(); window.scrollTo(0, 0); };
   const gx = q('#rec-graf-x'); if (gx) gx.onclick = () => { GRAFON = false; render(); };
   document.querySelectorAll('#rec-main [data-gm]').forEach(b => b.onclick = () => { GMODO = b.dataset.gm; render(); });
+  [['#rec-g-desde', v => { RDESDE = v; }], ['#rec-g-hasta', v => { RHASTA = v; }], ['#rec-g-a', v => { RA = v; }], ['#rec-g-b', v => { RB = v; }]].forEach(([id, f]) => { const e = q(id); if (e) e.onchange = () => { f(e.value); render(); }; });
   if (GRAFON) return;
   const sy = q('#rec-y'); if (sy) sy.onchange = () => { Y = +sy.value; render(); };
   const sm = q('#rec-m'); if (sm) sm.onchange = () => { M = +sm.value; render(); };
@@ -6982,6 +7004,15 @@ function mesDe(v){
 const numero = v => { if (typeof v === 'number') return v; const s = String(v ?? '').replace(/[$\s]/g, ''); if (!s || s === '-') return 0; const x = parseFloat(s.includes(',') && !s.includes('.') ? s.replace(',', '.') : s.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return isNaN(x) ? 0 : x; };
 
 // informe de edades del sistema (RPT_CARTERA_EDADES_CORTE)
+function isoCorte(v){
+  if (v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  if (typeof v === 'number' && v > 30000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 864e5)); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; }
+  const t = String(v ?? '').trim(); let m = t.match(/(\d{4})[-\/_](\d{1,2})[-\/_](\d{1,2})/); if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  m = t.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/); if (m) return `${m[3]}-${pad(m[2])}-${pad(m[1])}`; return null;
+}
+// día del corte de un mes guardado: el que se guardó, o el que dice el nombre del archivo del sistema
+function corteDe(k){ const d = MESD[k]; if (!d) return null; return d.corte || (d.fuente === 'sistema' ? isoCorte(d.archivo) : null); }
+const corteParcial = k => { const c = corteDe(k); if (!c || c.slice(0, 7) !== k) return false; const [y, m] = k.split('-').map(Number); return +c.slice(8) < new Date(y, m, 0).getDate() - 1; };
 async function leerSistema(file){
   for (const h of await hojas(file)) {
     let ci = -1, H = null;
@@ -6989,13 +7020,13 @@ async function leerSistema(file){
     if (ci < 0) continue;
     const col = k => H.indexOf(k), iF = col('FECHADECORTE'), iC = col('CUENTA'), iNm = col('NOMBREDECUENTA'), iN = H.findIndex(x => /CLIENTE/.test(x)),
       iT = col('TCARTERA'), iX = col('XVENCER'), i1 = col('1A30'), i2 = col('31A60'), i3 = col('61A90'), i4 = H.findIndex(x => x === '90' || x === 'MAS90'), iE = col('ENCARGADO');
-    const filas = []; let mes = null;
+    const filas = []; let mes = null, corte = null;
     for (const f of h.filas.slice(ci + 1)) {
       if (!f) continue; const cu = String(f[iC] ?? '').replace(/\D/g, ''); if (!cu) continue;
-      if (!mes && iF >= 0) mes = mesDe(f[iF]);
+      if (!mes && iF >= 0) { mes = mesDe(f[iF]); corte = isoCorte(f[iF]); }
       filas.push({cu, nom: iNm >= 0 ? String(f[iNm] ?? '').trim() : '', n: iN >= 0 ? Math.round(numero(f[iN])) : 0, t: numero(f[iT]), xv: Math.round(numero(f[iX])), d30: Math.round(numero(f[i1])), d60: Math.round(numero(f[i2])), d90: Math.round(numero(f[i3])), m90: Math.round(numero(f[i4])), enc: iE >= 0 ? String(f[iE] ?? '').trim() : ''});
     }
-    if (filas.length) return {tipo: 'sistema', nombre: file.name, filas, mes, asign: {}};
+    if (filas.length) return {tipo: 'sistema', nombre: file.name, filas, mes, corte, asign: {}};
   }
   throw new Error('formato-sistema');
 }
@@ -7128,16 +7159,38 @@ function grafico(h){
         <text x="${x0 + bw / 2}" y="${H - 12}" text-anchor="middle">${MC[+x.k.slice(5) - 1]} ${x.k.slice(2, 4)}</text><text x="${x0 + bw / 2}" y="${ys(v) - 5}" text-anchor="middle" class="tiny">${fpor(v)}</text></g>`; }).join('')}</svg>`;
 }
 /* ---------- Gráficas: cartera por edades de los últimos 3 años ---------- */
-let GLIN = 'motos';
+let GLIN = 'motos', GDESDE = null, GHASTA = null, GA = null, GB = null, TRAYENDO_H = false;
+async function traerHistorico(){
+  TRAYENDO_H = true; render();
+  try {
+    const files = [];
+    for (const l of ['motos', 'electro']) { if (!PLC[l]) continue; const meta = PLC[l]; let b64 = '';
+      for (let i = 0; i < meta.n; i++) { const d = await DB.collection('plantillas').doc(`cartera-${l}-${i}`).get(); if (!d.exists) throw new Error('incompleta'); b64 += d.data().b64; }
+      const bin = atob(b64), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      files.push(new File([u8], `INFORME CARTERA ${l.toUpperCase()}.xlsx`)); }
+    const C = await leerHistorico(files), ks = [...new Set(Object.values(C.lineas).flatMap(L => Object.values(L).flatMap(p => Object.keys(p))))].sort();
+    let n = 0;
+    for (const k of ks) { if (MESD[k]) continue;   // los meses que ya están en la aplicación no se tocan
+      const d = {fuente: 'excel', archivo: 'sus Excel de cartera'};
+      for (const l of ['motos', 'electro']) { const pts = {}; for (const [c, p] of Object.entries(C.lineas[l] || {})) if (p[k]) pts[c] = p[k]; if (Object.keys(pts).length) d[l] = pts; }
+      if (!d.motos && !d.electro) continue;
+      await guardarMes(k, d); n++; if (n % 10 === 0) toast(`Trayendo el histórico… ${n} meses`); }
+    toast(n ? `Listo: traje ${n} meses de sus Excel de cartera.` : 'Sus Excel no tienen meses que falten en la aplicación.');
+  } catch (e) { console.error(e); toast('No pude leer sus Excel de cartera. Revise "Mis plantillas de Excel".'); }
+  TRAYENDO_H = false; render();
+}
 function vGrafEd(){
   const G = window.GRAF; if (!G) return '';
-  const fin = SEL, ks = G.rango(fin, 36), S = (k, l) => MESD[k] && MESD[k][l] ? suma(Object.values(MESD[k][l])) : null;
+  const todos = meses(), ult = todos[todos.length - 1];
+  if (!GHASTA || !MESD[GHASTA]) GHASTA = SEL || ult;
+  const DES = GDESDE && GDESDE <= GHASTA && MESD[GDESDE] ? GDESDE : (G.sumar(GHASTA, -35) < todos[0] ? todos[0] : G.sumar(GHASTA, -35));
+  const fin = GHASTA, ks = (() => { const o = []; for (let k = DES; k <= fin; k = G.sumar(k, 1)) o.push(k); return o; })(), S = (k, l) => MESD[k] && MESD[k][l] ? suma(Object.values(MESD[k][l])) : null;
   const P = (k, l) => { const s = S(k, l); return s && tot(s) ? atr(s) / tot(s) * 100 : null; };
   const mm = k => MESES[+k.slice(5) - 1].toLowerCase() + ' ' + k.slice(0, 4);
   const racha = l => { let n = 0, k = fin; while (S(k, l) && S(G.sumar(k, -1), l) && atr(S(k, l)) > atr(S(G.sumar(k, -1), l))) { n++; k = G.sumar(k, -1); } return n; };
   const card = l => { const s = S(fin, l); if (!s) return ''; const a = S(G.sumar(fin, -1), l), y = S(G.sumar(fin, -12), l), at = atr(s);
     const c = (t, b) => `<div class="c"><span>${t}</span><b class="${b == null ? 'muted' : at <= b ? 'okc' : 'rojo'}">${b == null ? '—' : (at <= b ? 'Bajó ' : 'Subió ') + G.M(Math.abs(at - b))}</b></div>`;
-    return `<div class="gcard"><div class="t" style="color:${l === 'electro' ? 'var(--red)' : 'var(--accent)'}">${LINEAS[l]} · ${etqMes(fin)}</div><div class="n">${fpor(pc(at, tot(s)), 2)}</div>
+    return `<div class="gcard"><div class="t" style="color:${l === 'electro' ? 'var(--red)' : 'var(--accent)'}">${LINEAS[l]} · ${etqMes(fin)}${corteParcial(fin) ? ' · corte del ' + corteDe(fin).slice(8) : ''}</div><div class="n">${fpor(pc(at, tot(s)), 2)}</div>
       <div class="small muted">atrasado: ${money(at)} de ${money(tot(s))}</div>${c('Frente al mes anterior', a ? atr(a) : null)}${c('Frente al mismo mes del año pasado', y ? atr(y) : null)}
       <div class="c"><span>Más de 90 días</span><b>${money(s.m90)}</b></div></div>`; };
   const lec = [];
@@ -7149,6 +7202,7 @@ function vGrafEd(){
     if (a) { const t = [['d30', '1 a 30 días'], ['d60', '31 a 60 días']].filter(([e]) => (+a[e] || 0) > 0 && s[e] > a[e] * 1.15 && s[e] - a[e] >= 5e6).map(([e, n2]) => `${n2} pasó de ${G.M(a[e])} a ${G.M(s[e])}`);
       if (t.length) lec.push(`${LINEAS[l]}: subió la mora temprana (${t.join('; ')}). Si no se recoge el mes siguiente, se corre a la siguiente edad.`); }
   }
+  if (corteParcial(fin)) lec.unshift(`<b>Ojo: el corte de ${mm(fin)} es del ${corteDe(fin).slice(8)}/${corteDe(fin).slice(5, 7)}, antes de cerrar el mes.</b> A mitad de mes el atrasado siempre sale más alto porque muchos clientes pagan en los últimos días; no se compara parejo con los cierres de mes. El dato que cuenta es el del cierre.`);
   const sig = G.sumar(fin, 1);
   if (!MESD[sig]) lec.push(`El corte de ${mm(sig)} todavía no está cargado; cuando suba el informe de edades del sistema, las gráficas se actualizan solas.`);
   const Ec = S(fin, GLIN) ? GLIN : Object.keys(LINEAS).find(l => S(fin, l)) || GLIN, pre = Ec === 'electro' ? 'e' : 's';
@@ -7156,7 +7210,21 @@ function vGrafEd(){
     titulo: s ? `${etqMes(k)} · ${LINEAS[Ec]}\n1 a 30: ${money(s.d30)}\n31 a 60: ${money(s.d60)}\n61 a 90: ${money(s.d90)}\nMás de 90: ${money(s.m90)}\nTotal atrasado: ${money(atr(s))}` : etqMes(k)}; });
   const sw = i => `color-mix(in srgb,var(${Ec === 'electro' ? '--red' : '--accent'}) ${[20, 45, 75, 100][i]}%,var(${Ec === 'electro' ? '--red-soft' : '--accent-soft'}))`;
   const tb = G.rango(fin, 6).reverse().filter(k => MESD[k]).map(k => `<tr><td>${etqMes(k)}</td>${Object.keys(LINEAS).map(l => { const s = S(k, l); return s ? `<td class="num">${money(tot(s))}</td><td class="num">${money(atr(s))}</td><td class="num"><b>${fpor(P(k, l), 2)}</b></td>` : '<td></td><td></td><td></td>'; }).join('')}</tr>`).join('');
+  const opts = (sel, lista) => lista.map(k => `<option value="${k}" ${k === sel ? 'selected' : ''}>${etqMes(k)}${corteParcial(k) ? ' (corte parcial)' : ''}</option>`).join('');
+  const pocos = todos.length < 13 && DB && (PLC.motos || PLC.electro);
+  if (!GA || !MESD[GA]) GA = fin; if (!GB || !MESD[GB]) GB = todos[todos.indexOf(GA) - 1] || todos[0];
+  const comp = (() => { const filas = [['Cartera', s => tot(s)], ['X vencer', s => s.xv], ['1 a 30 días', s => s.d30], ['31 a 60 días', s => s.d60], ['61 a 90 días', s => s.d90], ['Más de 90 días', s => s.m90], ['Total atrasado', s => atr(s)], ['% atrasado', s => pc(atr(s), tot(s))]];
+    return Object.keys(LINEAS).map(l => { const a = S(GA, l), b = S(GB, l); if (!a && !b) return '';
+      return `<tr><td colspan="4" style="background:var(--surface-2)"><b style="color:${l === 'electro' ? 'var(--red)' : 'var(--accent)'}">${LINEAS[l]}</b></td></tr>` + filas.map(([n, f], i) => { const va = a ? f(a) : null, vb = b ? f(b) : null, dif = va != null && vb != null ? va - vb : null, esP = i === 7, mora = i >= 2;
+        const cls = dif == null || Math.abs(dif) < (esP ? 0.005 : 1) ? 'muted' : mora ? (dif > 0 ? 'rojo' : 'okc') : '';
+        const fx = v => v == null ? '—' : esP ? fpor(v, 2) : money(v);
+        return `<tr${i === 6 || i === 7 ? ' style="font-weight:700"' : ''}><td>${n}</td><td class="num">${fx(va)}</td><td class="num">${fx(vb)}</td><td class="num"><span class="${cls}">${dif == null ? '—' : (dif > 0 ? '+' : dif < 0 ? '−' : '') + (esP ? Math.abs(dif).toLocaleString('es-CO', {maximumFractionDigits: 2}) + ' pts' : money(Math.abs(dif)))}</span></td></tr>`; }).join(''); }).join(''); })();
   return `<div style="margin-top:12px;display:grid;gap:14px">
+    ${pocos ? `<div class="banner" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between"><span>La aplicación solo tiene ${todos.length} ${todos.length === 1 ? 'mes' : 'meses'} de cartera guardados. Sus meses anteriores están en sus Excel de cartera; tráigalos para ver los 3 años.</span><button type="button" class="btn primary" id="ed-traer-h" ${TRAYENDO_H ? 'disabled' : ''}>${TRAYENDO_H ? 'Trayendo…' : 'Traer mi histórico de los Excel'}</button></div>` : ''}
+    <div class="panel" style="display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end">
+      <div class="field" style="margin:0"><label for="ed-g-desde">Gráficas desde</label><select id="ed-g-desde">${opts(DES, todos.filter(k => k <= fin))}</select></div>
+      <div class="field" style="margin:0"><label for="ed-g-hasta">hasta</label><select id="ed-g-hasta">${opts(fin, todos)}</select></div>
+      <span class="small muted">${ks.length} meses</span></div>
     <div class="gcards">${Object.keys(LINEAS).map(card).join('')}</div>
     <div class="panel" style="display:grid;gap:8px"><h3 style="margin:0">% de cartera atrasada · ${G.etq(ks[0])} a ${G.etq(fin)}</h3>
       <p class="small muted" style="margin:0">Total atrasado (de 1 día en adelante) dividido por el total de la cartera, al corte de cada mes.</p>
@@ -7167,6 +7235,12 @@ function vGrafEd(){
       ${G.leyenda([['1 a 30 días', sw(0)], ['31 a 60 días', sw(1)], ['61 a 90 días', sw(2)], ['Más de 90 días', sw(3)]])}
       ${G.barras({labels: ks.map(G.etq), cols, fmt: G.M, H: 320, aria: 'Atrasado por edades de ' + LINEAS[Ec]})}</div>
     <div class="panel"><h3 style="margin:0 0 8px">Lo que dicen los números</h3><ul class="glec">${lec.map(x => `<li>${x}</li>`).join('')}</ul></div>
+    <div class="panel" style="display:grid;gap:10px"><h3 style="margin:0">Comparar dos meses</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end">
+        <div class="field" style="margin:0"><label for="ed-g-a">Mes</label><select id="ed-g-a">${opts(GA, todos)}</select></div>
+        <div class="field" style="margin:0"><label for="ed-g-b">frente a</label><select id="ed-g-b">${opts(GB, todos)}</select></div></div>
+      <div class="tbl-wrap"><table class="rec-tab"><thead><tr><th></th><th class="num">${etqMes(GA)}</th><th class="num">${etqMes(GB)}</th><th class="num">Diferencia</th></tr></thead><tbody>${comp}</tbody></table></div>
+      <p class="small muted" style="margin:0">En la mora, la diferencia en verde es que bajó (bien) y en rojo que subió.</p></div>
     <div class="tbl-wrap"><table class="rec-tab"><thead><tr><th>Mes</th><th class="num">Cartera motos</th><th class="num">Atrasado motos</th><th class="num">%</th><th class="num">Cartera electro</th><th class="num">Atrasado electro</th><th class="num">%</th></tr></thead><tbody>${tb}</tbody></table></div>
   </div>`;
 }
@@ -7457,6 +7531,8 @@ function bind(){
   const root = q('#edad-main');
   root.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => { VISTA = b.dataset.ev; render(); });
   root.querySelectorAll('[data-glin]').forEach(b => b.onclick = () => { GLIN = b.dataset.glin; render(); });
+  [['#ed-g-desde', v => { GDESDE = v; }], ['#ed-g-hasta', v => { GHASTA = v; }], ['#ed-g-a', v => { GA = v; }], ['#ed-g-b', v => { GB = v; }]].forEach(([id, f]) => { const e = q(id); if (e) e.onchange = () => { f(e.value); render(); }; });
+  const th = q('#ed-traer-h'); if (th) th.onclick = traerHistorico;
   const sm = q('#ed-mes'); if (sm) sm.onchange = () => { SEL = sm.value; render(); };
   const abrir = (id, fn, multi) => { const f = q(id); if (f) f.onchange = async () => { const files = [...f.files]; f.value = ''; if (!files.length) return;
     try { CARGA = await fn(multi ? files : files[0]); } catch (e) { toast({'formato-sistema': 'Ese archivo no parece el informe de cartera por edades del sistema: no tiene las columnas CUENTA y T. CARTERA.', 'formato-historico': 'No encontré meses en esos archivos. Deben ser sus Excel INFORME CARTERA MOTOS y ELECTRO.', xlsx: 'No se pudo cargar el lector de Excel. Recargue la página.'}[e.message] || 'No se pudo leer el archivo.'); }
@@ -7500,7 +7576,7 @@ async function guardar(){
       const otras = {}; for (const [c] of OTRAS) otras[c] = vacia();
       if (viejo.otrasV) Object.assign(otras, viejo.otras || {});
       for (const [c, r] of Object.entries(P.res.otras)) otras[c] = {n: r.n, xv: r.xv, d30: r.d30, d60: r.d60, d90: r.d90, m90: r.m90};
-      await guardarMes(k, {motos: P.res.motos, electro: P.res.electro, otras, otrasV: 1, contable: viejo.contable || null, fuente: 'sistema', archivo: CARGA.nombre});
+      await guardarMes(k, {motos: P.res.motos, electro: P.res.electro, otras, otrasV: 1, contable: viejo.contable || null, fuente: 'sistema', archivo: CARGA.nombre, corte: CARGA.corte || null});
       SEL = k; toast(`Cartera de ${etqMes(k).toLowerCase()} guardada.`);
     } else {
       const ks = new Set(); for (const L of Object.values(CARGA.lineas)) for (const p of Object.values(L)) Object.keys(p).forEach(k => ks.add(k));
