@@ -2618,6 +2618,7 @@ function resumenJefe(r){
       ${fila('Valor de retoma propuesto', m(r.avValorRetoma))}
       ${fila('Valor de venta propuesto (con todo)', m(r.avValorSugerido))}
       ${fila('Repuestos que se va a llevar (peritaje)', m(a.rep), (r.avRepuestos || []).length ? `${(r.avRepuestos || []).length} repuestos` : 'Sin cotización de repuestos')}
+      <tr style="border-top:2px solid #cfd6e4"><td><b>${a.saldoCliente > 0 ? '<span class="rojo">Lo que queda debiendo el cliente</span>' : a.saldoCliente < 0 ? '<span style="color:#1e40af">Saldo a favor del cliente</span>' : 'El cliente queda a paz y salvo'}</b><div class="small muted">Lo que debe de la financiación + papeles y otros gastos − valor de retoma</div></td><td class="num"><b>${a.saldoCliente > 0 ? `<span class="rojo">${m(a.saldoCliente)}</span>` : a.saldoCliente < 0 ? `<span style="color:#1e40af">(${m(-a.saldoCliente)})</span>` : '$0'}</b></td></tr>
     </tbody></table></div>
     <div id="aprobSlot" style="margin-top:12px"></div>
     <div class="nov-actions" style="margin-top:10px"><button type="button" class="btn" id="resVerTodo">Ver toda la información de la moto</button></div>
