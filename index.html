@@ -3521,12 +3521,13 @@ function campanaItems(){
   let eresp = []; try { eresp = veResp() && window.ELE && ELE.todos ? ELE.todos().filter(r => (r.retEstado === 'Aprobado' || r.retEstado === 'Devuelto') && respNueva(r.retAprobadoEn, 'e:' + r.id))
     .sort((a, b) => String(b.retAprobadoEn).localeCompare(String(a.retAprobadoEn))) : []; } catch (e) {}
   let erev = []; try { erev = (S.owner || (isEnc() && !S.readOnly)) && window.ELE && ELE.paraRevision ? ELE.paraRevision().sort((a, b) => String(a.fechaRecibo).localeCompare(String(b.fechaRecibo))) : []; } catch (e) {}
-  return {aval, per, eaval, saldo, resp, eresp, erev};
+  let elisto = []; try { elisto = (S.owner || (isEnc() && !S.readOnly)) && window.ELE && ELE.paraAvaluo ? ELE.paraAvaluo() : []; } catch (e) {}
+  return {aval, per, eaval, saldo, resp, eresp, erev, elisto};
 }
 function updBell(){
   const b = document.getElementById('mmBell'); if (!b) return;
-  const {aval, per, eaval, saldo, resp, eresp, erev} = campanaItems(), n = aval.length + per.length + eaval.length + saldo.length + resp.length + eresp.length + erev.length;
-  b.hidden = !(isJefe() || S.owner || resp.length || eresp.length || erev.length) || S.needLogin || S.pendiente;
+  const {aval, per, eaval, saldo, resp, eresp, erev, elisto} = campanaItems(), n = aval.length + per.length + eaval.length + saldo.length + resp.length + eresp.length + erev.length + elisto.length;
+  b.hidden = !(isJefe() || S.owner || resp.length || eresp.length || erev.length || elisto.length) || S.needLogin || S.pendiente;
   const c = document.getElementById('mmBellN'); c.hidden = !n; c.textContent = n > 99 ? '99+' : n;
   b.classList.toggle('on', n > 0);
   b.setAttribute('aria-label', n ? `Avisos: ${n} pendientes` : 'Avisos: nada pendiente');
@@ -3534,7 +3535,7 @@ function updBell(){
 }
 function drawBell(){
   const p = document.getElementById('mmBellPanel'); if (!p) return;
-  const {aval, per, eaval, saldo, resp, eresp, erev} = campanaItems();
+  const {aval, per, eaval, saldo, resp, eresp, erev, elisto} = campanaItems();
   const it = (r, sub, tipo) => `<button type="button" class="bell-it" data-bell="${tipo}" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> ${plate(r.placa)}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')}${sub ? ' · ' + sub : ''}</span></button>`;
   let h = '';
   if (saldo.length) h += `<div class="bell-h">Lector de tarjetas <span class="chip pill-red">sin saldo</span></div><button type="button" class="bell-it" id="bellSaldo"><span class="bell-t"><b>Se acabó el saldo del lector</b></span><span class="bell-s">Recárguelo en console.anthropic.com → Billing · ${esc(fdt(saldo[0].at))}</span></button>`;
@@ -3546,8 +3547,10 @@ function drawBell(){
   }
   if (isJefe()) h += `<div class="bell-h">Avalúos por aprobar <span class="chip ${aval.length ? 'pill-warn' : ''}">${aval.length}</span></div>` +
     (aval.map(r => it(r, `retoma propuesta ${money(r.avValorRetoma) || '—'}`, 'aval')).join('') || '<p class="bell-v">No hay avalúos esperando su aprobación.</p>');
-  if (erev.length) h += `<div class="bell-h">Electrodomésticos para revisión técnica <span class="chip pill-red">${erev.length}</span></div>` +
-    erev.map(r => `<button type="button" class="bell-it" data-bell="erev" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · ${daysBetween(r.fechaRecibo, todayISO())} días en sala: ya se puede pasar a revisión técnica</span></button>`).join('');
+  if (elisto.length) h += `<div class="bell-h">Electrodomésticos listos para el avalúo <span class="chip pill-warn">${elisto.length}</span></div>` +
+    elisto.map(r => `<button type="button" class="bell-it" data-bell="erev" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · ${r.retEstado === 'Devuelto' ? 'el jefe lo devolvió para corregir' : 'falta el avalúo y enviarlo al jefe'}</span></button>`).join('');
+  if (erev.length) h += `<div class="bell-h">Electrodomésticos para pasar a avalúo o revisión técnica <span class="chip pill-red">${erev.length}</span></div>` +
+    erev.map(r => `<button type="button" class="bell-it" data-bell="erev" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · ${daysBetween(r.fechaRecibo, todayISO())} días en sala: ya se puede pasar a avalúo</span></button>`).join('');
   if (isJefe()) h += `<div class="bell-h">Avalúos de electrodomésticos por aprobar <span class="chip ${eaval.length ? 'pill-warn' : ''}">${eaval.length}</span></div>` +
     (eaval.map(r => `<button type="button" class="bell-it" data-bell="eaval" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · retoma ${money(r.retValor) || '—'} · venta ${money(r.retVenta) || '—'}</span></button>`).join('') || '<p class="bell-v">No hay avalúos de electrodomésticos esperando.</p>');
   if (S.owner) h += `<div class="bell-h">Pasaron a peritaje <span class="chip ${per.length ? 'pill-red' : ''}">${per.length}</span>${per.length > 1 && !S.readOnly ? '<button type="button" class="bell-todas" id="bellTodas">Marcar todas vistas</button>' : ''}</div>` +
@@ -3657,7 +3660,7 @@ function eRender(){
   const tileE = (n, l, est, alerta) => `<div class="tile link ${alerta && n ? 'alert' : ''}" data-efil="${esc(est)}" tabindex="0" role="button"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`;
   main.innerHTML = `<div class="ele-head"><div><h2 style="margin:0">Electrodomésticos retenidos</h2><p class="sub" style="margin:4px 0 0">Casanova · el cliente tiene ${E_PLAZO} días desde la retención para recuperarlo.</p></div>
       ${ePuedeEditar() ? '<button class="btn primary" id="eNuevo">+ Nuevo electrodoméstico</button>' : ''}</div>
-    ${venc.length ? `<div class="mc-alert" style="margin:12px 0"><span><b>${venc.length} ${venc.length === 1 ? 'electrodoméstico lleva' : 'electrodomésticos llevan'} ${E_PLAZO} días o más en sala.</b> Si el cliente no abonó, ya se pueden pasar a <b>Revisión técnica</b>.</span><button class="btn" data-efil="_venc">Ver</button></div>` : ''}
+    ${venc.length ? `<div class="mc-alert" style="margin:12px 0"><span><b>${venc.length} ${venc.length === 1 ? 'electrodoméstico lleva' : 'electrodomésticos llevan'} ${E_PLAZO} días o más en sala.</b> Si el cliente no abonó, páselos a <b>Avalúo</b> (o a <b>Revisión técnica</b> si hay que arreglarlos).</span><button class="btn" data-efil="_venc">Ver</button></div>` : ''}
     ${isJefe() && pend.length ? `<div class="mc-alert" style="margin:12px 0"><span><b>${pend.length} ${pend.length === 1 ? 'avalúo espera' : 'avalúos esperan'} tu aprobación.</b></span><button class="btn" data-efil="_ret">Ver</button></div>` : ''}
     <div class="mc-tiles" style="margin:12px 0">
       ${tileE(cuenta('En sala'), 'En sala', 'En sala')}${tileE(venc.length, `Con ${E_PLAZO} días o más`, '_venc', true)}${tileE(cuenta('Revisión técnica'), 'En revisión técnica', 'Revisión técnica')}${tileE(cuenta('Avalúo'), 'En avalúo', 'Avalúo')}${tileE(pend.length, 'Avalúos por aprobar', '_ret', isJefe())}
@@ -3724,7 +3727,7 @@ function eAbrir(id, ir){
     <div class="sheet-body">
       <fieldset class="estado-top"><legend>Estado actual</legend><div class="fgrid">${inp('estado', 'Estado', {sel: isNew ? ['En sala'] : E_ESTADOS, req: 1})}</div>
         ${!isNew && isJefe() && !ro ? `<div class="nov-actions" style="margin:8px 0 0;align-items:center">${cur.fechaRetoma ? `<span class="chip">Retomado el ${fd(cur.fechaRetoma)}</span>` : ''}<button type="button" class="btn ${cur.fechaRetoma ? '' : 'primary'}" id="eIrRetoma">${cur.fechaRetoma ? 'Cambiar fecha de retoma' : 'Marcar retoma'}</button><span class="small muted">Si ya se retomó (se bajó del sistema), escriba la fecha y guarde.</span></div>` : ''}
-        ${!isNew && cur.estado === 'En sala' ? `<p class="small muted" style="margin:6px 0 0">${eVencido(cur) ? `<b class="rojo">Ya pasaron los ${E_PLAZO} días</b> (${daysBetween(cur.fechaRecibo, todayISO())} días en sala). Si el cliente no abonó, páselo a <b>Revisión técnica</b>.` : `Plazo para recuperarlo: hasta el ${fd(masDias(cur.fechaRecibo, E_PLAZO))}.`}</p>` : ''}</fieldset>
+        ${!isNew && cur.estado === 'En sala' ? `<p class="small muted" style="margin:6px 0 0">${eVencido(cur) ? `<b class="rojo">Ya pasaron los ${E_PLAZO} días</b> (${daysBetween(cur.fechaRecibo, todayISO())} días en sala). Si el cliente no abonó, páselo a <b>Avalúo</b>, o a <b>Revisión técnica</b> si hay que arreglarlo.` : `Plazo para recuperarlo: hasta el ${fd(masDias(cur.fechaRecibo, E_PLAZO))}.`}</p>` : ''}</fieldset>
       ${cur.importado && cur.faltan && cur.faltan.length ? `<div class="revisar" style="margin:0 0 12px"><b>Viene del Excel histórico con información pendiente.</b> Se puede guardar igual; complétala cuando puedas:<ul style="margin:6px 0 0 18px">${cur.faltan.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
       <section class="etapa"><div class="etapa-head" style="cursor:default"><span class="etapa-t">En sala</span><span class="etapa-sub">Recibo, artículo, fotos, estado de cuenta y abonos</span></div><div class="etapa-body">
       <fieldset><legend>Recibo</legend><div class="fgrid">
@@ -3746,12 +3749,12 @@ function eAbrir(id, ir){
       <details class="e-plega" ${cur.observaciones ? 'open' : ''}><summary>Observaciones</summary><div class="fgrid" style="margin-top:8px">${inp('observaciones', 'Observaciones', {area: 1, wide: 1})}</div></details>
       </div></section>
       ${isNew ? '' : `
-      <section class="etapa" id="eRevBox" ${cur.estado !== 'En sala' || (cur.arreglos || []).length || cur.rvNecesita ? '' : 'hidden'}><div class="etapa-head" style="cursor:default"><span class="etapa-t">Revisión técnica</span><span class="etapa-sub">Qué tiene el artículo y qué hay que arreglar o comprar para venderlo</span></div><div class="etapa-body">
+      <section class="etapa" id="eRevBox" ${cur.estado !== 'En sala' || (cur.arreglos || []).length || cur.rvNecesita ? '' : 'hidden'}><div class="etapa-head" style="cursor:default"><span class="etapa-t">Revisión técnica</span><span class="etapa-sub">Opcional: solo si hay que arreglar o comprar algo para venderlo</span></div><div class="etapa-body">
       <fieldset><legend>Revisión</legend>
-        <p class="small muted" style="margin:0 0 8px">Pase el artículo a <b>Revisión técnica</b> (arriba, en Estado) cuando el cliente no lo recuperó. Anote si hay que mandarlo a arreglar, cambiar el vidrio, comprar el cargador, formatearlo, hacerle mantenimiento… y cuánto cuesta.</p>
+        <p class="small muted" style="margin:0 0 8px"><b>Esta etapa es opcional.</b> Si el artículo está bien, páselo directo a <b>Avalúo</b> (arriba, en Estado). Úsela solo si hay que arreglarlo. Anote si hay que mandarlo a arreglar, cambiar el vidrio, comprar el cargador, formatearlo, hacerle mantenimiento… y cuánto cuesta.</p>
         <div class="fgrid">${inp('rvFecha', 'Fecha de la revisión', {date: 1})}${inp('rvPor', 'Quién lo revisó (técnico o encargada)')}${inp('rvNecesita', '¿Necesita arreglos o repuestos?', {sel: ['Sí', 'No, está listo para vender']})}${inp('rvDiag', 'Qué se encontró', {area: 1, wide: 1})}</div>
         <div id="eArreglos" style="margin-top:10px"></div></fieldset>
-      ${cur.estado === 'En sala' && !ro && enc ? '<div class="nov-actions" id="eRevHint"><span class="small muted">Para empezar la revisión, cambie el estado a <b>Revisión técnica</b> y guarde.</span></div>' : ''}
+      ${cur.estado === 'En sala' && !ro && enc ? '<div class="nov-actions" id="eRevHint"><span class="small muted">Si hay que arreglarlo, cambie el estado a <b>Revisión técnica</b>. Si está bien, cámbielo a <b>Avalúo</b> y guarde: le sale listo a la encargada para hacer el avalúo.</span></div>' : ''}
       </div></section>
       ${(() => { const toca = cur.estado !== 'En sala' || !!cur.retEstado || !!cur.fechaRetoma || !!cur.valorRetoma || (!!cur.fechaRecibo && daysBetween(cur.fechaRecibo, todayISO()) >= E_PLAZO); return toca ? '' : `<p class="small muted" id="eRetomaAviso" style="margin:12px 0 0">La parte de <b>Avalúo y retoma</b> aparece cuando se cumplan ${E_PLAZO} días en sala (o si cambia el estado). <a href="#" id="eVerRetoma">Verla ahora</a></p>`; })()}
       <section class="etapa" id="eRetomaBox" ${cur.estado !== 'En sala' || cur.retEstado || cur.fechaRetoma || cur.valorRetoma || (cur.fechaRecibo && daysBetween(cur.fechaRecibo, todayISO()) >= E_PLAZO) ? '' : 'hidden'}><div class="etapa-head" style="cursor:default"><span class="etapa-t">Avalúo y retoma</span><span class="etapa-sub">Notificación al cliente, valor de retoma, valor de venta y aprobación del jefe</span></div><div class="etapa-body">
@@ -3833,7 +3836,7 @@ function eSync(){
   const cu = $('#eCuenta'); if (cu) cu.innerHTML = `Para recuperarlo debe pagar <b>${money(eRecuperar(r)) || '$0'}</b> (vencido + intereses + gastos${eAbonado(r) ? ' − abonos' : ''}). `;
   const rc = $('#eRetCalc'); if (rc) rc.innerHTML = eRetoma(r) ? `Debe en total ${money(eDeudaTotal(r))} − retoma ${money(eRetoma(r))} = ${eSaldo(r) > 0 ? `<b class="rojo">el cliente queda debiendo ${money(eSaldo(r))}</b>` : '<b>el cliente queda a paz y salvo</b>'}.` : '';
   const sf = $('#eSaldoFs'); if (sf) sf.hidden = !(r.retEstado === 'Aprobado' || !E_ANTES_VENTA.has(st) || isJefe());
-  const rv = $('#eRevBox'); if (rv && st !== 'En sala') rv.hidden = false; const rh = $('#eRevHint'); if (rh) rh.hidden = st !== 'En sala';
+  const rv = $('#eRevBox'); if (rv) rv.hidden = !(st === 'Revisión técnica' || (r.arreglos || []).length || r.rvNecesita || E.arreglos && E.arreglos.length); const rh = $('#eRevHint'); if (rh) rh.hidden = st !== 'En sala';
   const rc2 = $('#eRetCalc'); if (rc2 && eArreglos(r)) rc2.innerHTML += ` <span class="muted">Arreglos de la revisión técnica: <b>${money(eArreglos(r))}</b>.</span>`;
   const sc = $('#e_scEstado'); if (sc) sc.closest('.field').hidden = !(eSaldo(r) > 0);
   ['scFechaPago', 'scRC'].forEach(k => { const el = $('#e_' + k); if (el) el.closest('.field').hidden = r.scEstado !== 'Pagó el saldo: paz y salvo'; });
@@ -3924,7 +3927,7 @@ async function eGuardar(salir, accion){
   // retoma: enviar al jefe
   if (accion === 'enviarRet') {
     const fn = notifFaltan(E.fotos, NOTIF_RET, v);
-    const f2 = [!v.rvNecesita && 'la revisión técnica (si necesita arreglos o no)', v.rvNecesita === 'Sí' && !(v.arreglos || []).length && 'los arreglos de la revisión técnica', !v.retVenta && 'el valor de venta propuesto', !v.tieneDS && 'indicar cuántos deudores solidarios tiene', !v.waTit && 'indicar si el deudor tiene WhatsApp', nDS(v.tieneDS) && !v.waDS && 'indicar si el deudor solidario tiene WhatsApp', fn.length && 'notificación de retoma: ' + fn.join(', '), !v.capital && 'lo que debe el cliente en total al retomarlo', !v.retValor && 'el valor de retoma propuesto'].filter(Boolean);
+    const f2 = [v.rvNecesita === 'Sí' && !(v.arreglos || []).length && 'los arreglos de la revisión técnica (o cambie "¿Necesita arreglos?" a No)', !v.retVenta && 'el valor de venta propuesto', !v.tieneDS && 'indicar cuántos deudores solidarios tiene', !v.waTit && 'indicar si el deudor tiene WhatsApp', nDS(v.tieneDS) && !v.waDS && 'indicar si el deudor solidario tiene WhatsApp', fn.length && 'notificación de retoma: ' + fn.join(', '), !v.capital && 'lo que debe el cliente en total al retomarlo', !v.retValor && 'el valor de retoma propuesto'].filter(Boolean);
     if (f2.length) { if (falta('Para enviar el avalúo al jefe falta: ' + f2.join('; ') + '.')) return; }
     v.retEstado = 'Pendiente'; v.retAprobado = null; v.retNota = null; v.estado = 'Avalúo';
   }
@@ -3933,7 +3936,6 @@ async function eGuardar(salir, accion){
   if (cambiaEstado) {
     if (!E_PODER.has(prev.estado) && !S.owner) { if (falta('Este electrodoméstico ya salió (' + prev.estado + '). Solo Kenny puede cambiar su estado.')) return; }
     if (v.estado !== 'Chatarra' && v.estado !== 'Recuperado por el cliente' && v.estado !== 'En sala' && !isEnc()) { if (falta('Solo las encargadas y el jefe pueden pasarlo a ' + v.estado + '.')) return; }
-    if (v.estado === 'Avalúo' && accion !== 'enviarRet' && !v.rvNecesita) { if (falta('Antes del avalúo, llene la revisión técnica (si necesita arreglos o no).')) return; }
     if (v.estado === 'Para la venta') {
       if (prev.retEstado !== 'Aprobado') { if (falta('Para pasarlo a la venta, el jefe tiene que aprobar primero el avalúo (sección Avalúo y retoma).')) return; }
       if (!v.fechaRetoma) { if (falta('Escribe la fecha de retoma.')) return; }
@@ -3997,6 +3999,7 @@ window.ELE = {
   render: eRender, abrir: eAbrir, iniciar: eIniciar,
   pend: () => isJefe() ? eLista().filter(eRetPend) : [],
   paraRevision: () => eLista().filter(eVencido),
+  paraAvaluo: () => eLista().filter(r => r.estado === 'Avalúo' && !['Pendiente', 'Aprobado'].includes(r.retEstado)),
   todos: () => eLista(),
   resumen(){ const all = eLista(); return {cargado: E.cargado, enSala: all.filter(r => r.estado === 'En sala').length, venc: all.filter(eVencido).length, pend: all.filter(eRetPend).length, venta: all.filter(r => r.estado === 'Para la venta').length, jefe: isJefe(), plazo: E_PLAZO, puede: ePuedeEditar()}; }
 };
