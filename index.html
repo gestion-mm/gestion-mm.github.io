@@ -3513,12 +3513,13 @@ function campanaItems(){
     .sort((a, b) => String(b.avAprobadoEn).localeCompare(String(a.avAprobadoEn))) : [];
   let eresp = []; try { eresp = veResp() && window.ELE && ELE.todos ? ELE.todos().filter(r => (r.retEstado === 'Aprobado' || r.retEstado === 'Devuelto') && respNueva(r.retAprobadoEn, 'e:' + r.id))
     .sort((a, b) => String(b.retAprobadoEn).localeCompare(String(a.retAprobadoEn))) : []; } catch (e) {}
-  return {aval, per, eaval, saldo, resp, eresp};
+  let erev = []; try { erev = (S.owner || (isEnc() && !S.readOnly)) && window.ELE && ELE.paraRevision ? ELE.paraRevision().sort((a, b) => String(a.fechaRecibo).localeCompare(String(b.fechaRecibo))) : []; } catch (e) {}
+  return {aval, per, eaval, saldo, resp, eresp, erev};
 }
 function updBell(){
   const b = document.getElementById('mmBell'); if (!b) return;
-  const {aval, per, eaval, saldo, resp, eresp} = campanaItems(), n = aval.length + per.length + eaval.length + saldo.length + resp.length + eresp.length;
-  b.hidden = !(isJefe() || S.owner || resp.length || eresp.length) || S.needLogin || S.pendiente;
+  const {aval, per, eaval, saldo, resp, eresp, erev} = campanaItems(), n = aval.length + per.length + eaval.length + saldo.length + resp.length + eresp.length + erev.length;
+  b.hidden = !(isJefe() || S.owner || resp.length || eresp.length || erev.length) || S.needLogin || S.pendiente;
   const c = document.getElementById('mmBellN'); c.hidden = !n; c.textContent = n > 99 ? '99+' : n;
   b.classList.toggle('on', n > 0);
   b.setAttribute('aria-label', n ? `Avisos: ${n} pendientes` : 'Avisos: nada pendiente');
@@ -3526,20 +3527,22 @@ function updBell(){
 }
 function drawBell(){
   const p = document.getElementById('mmBellPanel'); if (!p) return;
-  const {aval, per, eaval, saldo, resp, eresp} = campanaItems();
+  const {aval, per, eaval, saldo, resp, eresp, erev} = campanaItems();
   const it = (r, sub, tipo) => `<button type="button" class="bell-it" data-bell="${tipo}" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> ${plate(r.placa)}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')}${sub ? ' · ' + sub : ''}</span></button>`;
   let h = '';
   if (saldo.length) h += `<div class="bell-h">Lector de tarjetas <span class="chip pill-red">sin saldo</span></div><button type="button" class="bell-it" id="bellSaldo"><span class="bell-t"><b>Se acabó el saldo del lector</b></span><span class="bell-s">Recárguelo en console.anthropic.com → Billing · ${esc(fdt(saldo[0].at))}</span></button>`;
   if (resp.length + eresp.length) {
-    const est = (ok, v, at) => (ok ? `<b style="color:#1b7a3d">Aprobado</b> · retoma ${money(v) || '—'}` : '<b class="rojo">Devuelto para corregir</b>') + ' · ' + esc(fdt(at));
+    const est = (ok, v, at, vt) => (ok ? `<b style="color:#1b7a3d">Aprobado</b> · retoma ${money(v) || '—'}${vt ? ' · venta ' + money(vt) : ''}` : '<b class="rojo">Devuelto para corregir</b>') + ' · ' + esc(fdt(at));
     h += `<div class="bell-h">Respuestas del jefe <span class="chip pill-ok">${resp.length + eresp.length}</span>${resp.length + eresp.length > 1 ? '<button type="button" class="bell-todas" id="bellRespTodas">Marcar todas vistas</button>' : ''}</div>` +
       resp.map(r => it(r, 'avalúo ' + est(r.avEstado === 'Aprobado', r.avValorAprobado, r.avAprobadoEn), 'resp')).join('') +
-      eresp.map(r => `<button type="button" class="bell-it" data-bell="eresp" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · electro ${est(r.retEstado === 'Aprobado', r.retAprobado, r.retAprobadoEn)}</span></button>`).join('');
+      eresp.map(r => `<button type="button" class="bell-it" data-bell="eresp" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · electro ${est(r.retEstado === 'Aprobado', r.retAprobado, r.retAprobadoEn, r.retVentaAprob)}</span></button>`).join('');
   }
   if (isJefe()) h += `<div class="bell-h">Avalúos por aprobar <span class="chip ${aval.length ? 'pill-warn' : ''}">${aval.length}</span></div>` +
     (aval.map(r => it(r, `retoma propuesta ${money(r.avValorRetoma) || '—'}`, 'aval')).join('') || '<p class="bell-v">No hay avalúos esperando su aprobación.</p>');
-  if (isJefe()) h += `<div class="bell-h">Retomas de electrodomésticos por aprobar <span class="chip ${eaval.length ? 'pill-warn' : ''}">${eaval.length}</span></div>` +
-    (eaval.map(r => `<button type="button" class="bell-it" data-bell="eaval" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · retoma propuesta ${money(r.retValor) || '—'}</span></button>`).join('') || '<p class="bell-v">No hay retomas de electrodomésticos esperando.</p>');
+  if (erev.length) h += `<div class="bell-h">Electrodomésticos para revisión técnica <span class="chip pill-red">${erev.length}</span></div>` +
+    erev.map(r => `<button type="button" class="bell-it" data-bell="erev" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · ${daysBetween(r.fechaRecibo, todayISO())} días en sala: ya se puede pasar a revisión técnica</span></button>`).join('');
+  if (isJefe()) h += `<div class="bell-h">Avalúos de electrodomésticos por aprobar <span class="chip ${eaval.length ? 'pill-warn' : ''}">${eaval.length}</span></div>` +
+    (eaval.map(r => `<button type="button" class="bell-it" data-bell="eaval" data-id="${esc(r.id)}"><span class="bell-t"><b>${esc(r.deudor || 'Sin nombre')}</b> · ${esc([r.tipo, r.marca].filter(Boolean).join(' '))}</span><span class="bell-s">N.° ${esc(r.numero)} · ${esc(r.pdv || '')} · retoma ${money(r.retValor) || '—'} · venta ${money(r.retVenta) || '—'}</span></button>`).join('') || '<p class="bell-v">No hay avalúos de electrodomésticos esperando.</p>');
   if (S.owner) h += `<div class="bell-h">Pasaron a peritaje <span class="chip ${per.length ? 'pill-red' : ''}">${per.length}</span>${per.length > 1 && !S.readOnly ? '<button type="button" class="bell-todas" id="bellTodas">Marcar todas vistas</button>' : ''}</div>` +
     (per.map(({r, h: e}) => it(r, (e ? esc(fdt(e.at)) : '') + (perEnProceso(r) ? ' · <span class="rojo">en proceso</span>' : ' · listo'), 'per')).join('') || '<p class="bell-v">No hay motos nuevas en peritaje.</p>');
   p.innerHTML = h;
@@ -3553,6 +3556,7 @@ function cerrarBell(){ const p = document.getElementById('mmBellPanel'); if (p) 
 function abrirDesdeBell(id, tipo){
   cerrarBell();
   if (tipo === 'eaval') { if (window.ELE) ELE.abrir(id, 'aprob'); return; }
+  if (tipo === 'erev') { if (window.ELE) ELE.abrir(id); return; }
   if (tipo === 'eresp') { respMarcar('e:' + id); if (window.ELE) ELE.abrir(id, 'aprob'); return; }
   if (tipo === 'resp') { respMarcar(id); openMoto(id); return; }
   openMoto(id);
@@ -3583,8 +3587,10 @@ function abrirDesdeBell(id, tipo){
    ===================================================================== */
 var E = {docs: {}, cargado: false, f: {text: '', estado: '', pdv: '', corte: ''}, edit: null, fotos: [], vistas: {}};
 const E_PLAZO = 15;
-const E_ESTADOS = ['En sala', 'Para la venta', 'Vendido', 'Recuperado por el cliente', 'Chatarra'];
-const E_PODER = new Set(['En sala', 'Para la venta']);
+const E_ESTADOS = ['En sala', 'Revisión técnica', 'Avalúo', 'Para la venta', 'Vendido', 'Recuperado por el cliente', 'Chatarra'];
+const E_PODER = new Set(['En sala', 'Revisión técnica', 'Avalúo', 'Para la venta']);
+const E_ANTES_VENTA = new Set(['En sala', 'Revisión técnica', 'Avalúo']);
+const eArreglos = r => (r.arreglos || []).reduce((t, a) => t + (+a.valor || 0), 0);
 const E_TIPOS = ['Nevera','Congelador','Televisor','Lavadora','Estufa','Horno','Parlante o equipo de sonido','Ventilador','Aire acondicionado','Celular','Computador','Colchón','Mueble','Pequeño electrodoméstico','Bicicleta','Otro'];
 const E_PDVS = [...new Set([...PDVS, 'ELECTRO PUERTO', 'CASANOVA PUERTO', 'CASANOVA AYAPEL', 'CASANOVA MAJAGUAL', 'CASANOVA MONTELIBANO', 'CASANOVA LA APARTADA', 'PUEBLO NUEVO'])];
 const E_TAG_ART = 'Artículo', E_TAG_INV = 'Inventario';
@@ -3604,10 +3610,10 @@ const eRetomadoAl = (r, d) => r.fechaRetoma ? r.fechaRetoma <= d : (r.retEstado 
 // estaba retenido ese día y todavía no se había retomado (sigue afectando la cartera)
 const eRetenidoAl = (r, d) => !!r.fechaRecibo && r.fechaRecibo <= d && (r.fechaSalida ? r.fechaSalida > d : E_PODER.has(r.estado)) && !eRetomadoAl(r, d);
 const eVencido = r => r.estado === 'En sala' && !!r.fechaRecibo && daysBetween(r.fechaRecibo, todayISO()) >= E_PLAZO && r.retEstado !== 'Pendiente';
-const eRetPend = r => r.estado === 'En sala' && r.retEstado === 'Pendiente';
+const eRetPend = r => E_ANTES_VENTA.has(r.estado) && r.retEstado === 'Pendiente';
 const eActivo = r => r.estado === 'Vendido' && /USO INTERNO|INVERSIONES\s+MOTOS|\bMYM\b|\bM\s?&\s?M\b/i.test(r.comprador || '');
-const eChip = r => { if (eActivo(r)) return '<span class="chip st-sala">Activo de la empresa</span>'; const c = {'En sala':'st-sala','Para la venta':'pill-warn','Vendido':'pill-ok','Recuperado por el cliente':'pill-ok','Chatarra':'pill-red'}[r.estado] || '';
-  return `<span class="chip ${c}">${esc(r.estado)}</span>` + (eRetPend(r) ? ' <span class="chip pill-warn">retoma por aprobar</span>' : r.retEstado === 'Devuelto' && r.estado === 'En sala' ? ' <span class="chip pill-red">retoma devuelta</span>' : ''); };
+const eChip = r => { if (eActivo(r)) return '<span class="chip st-sala">Activo de la empresa</span>'; const c = {'En sala':'st-sala','Revisión técnica':'st-taller','Avalúo':'pill-warn','Para la venta':'pill-warn','Vendido':'pill-ok','Recuperado por el cliente':'pill-ok','Chatarra':'pill-red'}[r.estado] || '';
+  return `<span class="chip ${c}">${esc(r.estado)}</span>` + (eRetPend(r) ? ' <span class="chip pill-warn">avalúo por aprobar</span>' : r.retEstado === 'Devuelto' && E_ANTES_VENTA.has(r.estado) ? ' <span class="chip pill-red">avalúo devuelto</span>' : ''); };
 const eArt = r => [r.tipo, r.marca, r.referencia].filter(Boolean).join(' · ');
 const ePuedeEditar = () => !!S.db && !S.readOnly && !S.dbDown && !S.pendiente && !S.sinAcceso && (S.owner || !['Solo consulta','Levantamientos','Sin acceso'].includes(miRol()));
 
@@ -3644,15 +3650,15 @@ function eRender(){
   const tileE = (n, l, est, alerta) => `<div class="tile link ${alerta && n ? 'alert' : ''}" data-efil="${esc(est)}" tabindex="0" role="button"><div class="n">${n}</div><div class="l">${esc(l)}</div></div>`;
   main.innerHTML = `<div class="ele-head"><div><h2 style="margin:0">Electrodomésticos retenidos</h2><p class="sub" style="margin:4px 0 0">Casanova · el cliente tiene ${E_PLAZO} días desde la retención para recuperarlo.</p></div>
       ${ePuedeEditar() ? '<button class="btn primary" id="eNuevo">+ Nuevo electrodoméstico</button>' : ''}</div>
-    ${venc.length ? `<div class="mc-alert" style="margin:12px 0"><span><b>${venc.length} ${venc.length === 1 ? 'electrodoméstico lleva' : 'electrodomésticos llevan'} ${E_PLAZO} días o más en sala.</b> Revisa si el cliente abonó o inicia la retoma.</span><button class="btn" data-efil="_venc">Ver</button></div>` : ''}
-    ${isJefe() && pend.length ? `<div class="mc-alert" style="margin:12px 0"><span><b>${pend.length} ${pend.length === 1 ? 'retoma espera' : 'retomas esperan'} tu aprobación.</b></span><button class="btn" data-efil="_ret">Ver</button></div>` : ''}
+    ${venc.length ? `<div class="mc-alert" style="margin:12px 0"><span><b>${venc.length} ${venc.length === 1 ? 'electrodoméstico lleva' : 'electrodomésticos llevan'} ${E_PLAZO} días o más en sala.</b> Si el cliente no abonó, ya se pueden pasar a <b>Revisión técnica</b>.</span><button class="btn" data-efil="_venc">Ver</button></div>` : ''}
+    ${isJefe() && pend.length ? `<div class="mc-alert" style="margin:12px 0"><span><b>${pend.length} ${pend.length === 1 ? 'avalúo espera' : 'avalúos esperan'} tu aprobación.</b></span><button class="btn" data-efil="_ret">Ver</button></div>` : ''}
     <div class="mc-tiles" style="margin:12px 0">
-      ${tileE(cuenta('En sala'), 'En sala', 'En sala')}${tileE(venc.length, `Con ${E_PLAZO} días o más`, '_venc', true)}${tileE(pend.length, 'Retomas por aprobar', '_ret', isJefe())}
+      ${tileE(cuenta('En sala'), 'En sala', 'En sala')}${tileE(venc.length, `Con ${E_PLAZO} días o más`, '_venc', true)}${tileE(cuenta('Revisión técnica'), 'En revisión técnica', 'Revisión técnica')}${tileE(cuenta('Avalúo'), 'En avalúo', 'Avalúo')}${tileE(pend.length, 'Avalúos por aprobar', '_ret', isJefe())}
       ${tileE(cuenta('Para la venta'), 'Para la venta', 'Para la venta')}${tileE(cuenta('Vendido') - all.filter(eActivo).length, 'Vendidos', 'Vendido')}${tileE(all.filter(eActivo).length, 'Activos de la empresa', '_act')}${tileE(cuenta('Recuperado por el cliente'), 'Recuperados', 'Recuperado por el cliente')}${tileE(cuenta('Chatarra'), 'Chatarra', 'Chatarra')}
     </div>
     <div class="toolbar">
       <input type="search" id="eBuscar" placeholder="Buscar por deudor, referencia, comprador…" value="${esc(f.text)}" aria-label="Buscar">
-      <select id="eEstado" aria-label="Estado"><option value="">Todos los estados</option>${E_ESTADOS.map(s => `<option ${s === f.estado ? 'selected' : ''}>${s}</option>`).join('')}<option value="_venc" ${f.estado === '_venc' ? 'selected' : ''}>Con ${E_PLAZO} días o más en sala</option><option value="_act" ${f.estado === '_act' ? 'selected' : ''}>Activos de la empresa</option><option value="_ret" ${f.estado === '_ret' ? 'selected' : ''}>Retoma por aprobar</option></select>
+      <select id="eEstado" aria-label="Estado"><option value="">Todos los estados</option>${E_ESTADOS.map(s => `<option ${s === f.estado ? 'selected' : ''}>${s}</option>`).join('')}<option value="_venc" ${f.estado === '_venc' ? 'selected' : ''}>Con ${E_PLAZO} días o más en sala</option><option value="_act" ${f.estado === '_act' ? 'selected' : ''}>Activos de la empresa</option><option value="_ret" ${f.estado === '_ret' ? 'selected' : ''}>Avalúo por aprobar</option></select>
       ${pdvs.length > 1 ? `<select id="ePdv" aria-label="Punto"><option value="">Todos los puntos</option>${pdvs.map(p => `<option ${p === f.pdv ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>` : ''}
       <label class="chk" title="Electrodomésticos retenidos ese día que todavía no se habían retomado">Retenidos al corte del <input type="date" id="eCorte" value="${esc(f.corte || '')}" style="min-height:34px;padding:2px 6px"></label>${f.corte ? '<button class="btn small" id="eCorteX">Quitar corte</button>' : ''}
       <button class="btn" id="eCsv">Descargar CSV</button>
@@ -3703,14 +3709,15 @@ function eAbrir(id, ir){
     : `<input id="e_${k}" ${o.money ? `class="money-in" inputmode="numeric" placeholder="$" value="${esc(eMil(cur[k]))}"` : `type="${o.date ? 'date' : 'text'}" value="${v(k)}"`} ${ro || o.dis ? 'disabled' : ''} ${o.ph ? `placeholder="${esc(o.ph)}"` : ''}>`}${o.hint ? `<span class="hint">${esc(o.hint)}</span>` : ''}</div>`;
   const hist = (cur.historial || []).slice().reverse();
   names(hist.map(h => h.by)).then(() => document.querySelectorAll('.sheet [data-name]').forEach(el => el.textContent = who(el.dataset.name).name));
-  const jefeAprueba = isJefe() && cur.estado === 'En sala' && cur.retEstado === 'Pendiente' && !S.readOnly && !S.dbDown;
+  const jefeAprueba = isJefe() && E_ANTES_VENTA.has(cur.estado) && cur.retEstado === 'Pendiente' && !S.readOnly && !S.dbDown;
+  E.arreglos = (cur.arreglos || []).map(x => ({...x}));
   const root = $('#modal-root');
   root.innerHTML = `<div class="overlay" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="eTitle">
     <div class="sheet-head"><h2 id="eTitle">${isNew ? 'Nuevo electrodoméstico' : `N.° ${esc(cur.numero)} · ${esc(cur.deudor || '')}`}</h2>${isNew ? '' : eChip(cur)}<button class="btn" id="eClose">Cerrar</button></div>
     <div class="sheet-body">
       <fieldset class="estado-top"><legend>Estado actual</legend><div class="fgrid">${inp('estado', 'Estado', {sel: isNew ? ['En sala'] : E_ESTADOS, req: 1})}</div>
         ${!isNew && isJefe() && !ro ? `<div class="nov-actions" style="margin:8px 0 0;align-items:center">${cur.fechaRetoma ? `<span class="chip">Retomado el ${fd(cur.fechaRetoma)}</span>` : ''}<button type="button" class="btn ${cur.fechaRetoma ? '' : 'primary'}" id="eIrRetoma">${cur.fechaRetoma ? 'Cambiar fecha de retoma' : 'Marcar retoma'}</button><span class="small muted">Si ya se retomó (se bajó del sistema), escriba la fecha y guarde.</span></div>` : ''}
-        ${!isNew && cur.estado === 'En sala' ? `<p class="small muted" style="margin:6px 0 0">${eVencido(cur) ? `<b class="rojo">Ya pasaron los ${E_PLAZO} días</b> (${daysBetween(cur.fechaRecibo, todayISO())} días en sala). Revisa si el cliente abonó o inicia la retoma.` : `Plazo para recuperarlo: hasta el ${fd(masDias(cur.fechaRecibo, E_PLAZO))}.`}</p>` : ''}</fieldset>
+        ${!isNew && cur.estado === 'En sala' ? `<p class="small muted" style="margin:6px 0 0">${eVencido(cur) ? `<b class="rojo">Ya pasaron los ${E_PLAZO} días</b> (${daysBetween(cur.fechaRecibo, todayISO())} días en sala). Si el cliente no abonó, páselo a <b>Revisión técnica</b>.` : `Plazo para recuperarlo: hasta el ${fd(masDias(cur.fechaRecibo, E_PLAZO))}.`}</p>` : ''}</fieldset>
       ${cur.importado && cur.faltan && cur.faltan.length ? `<div class="revisar" style="margin:0 0 12px"><b>Viene del Excel histórico con información pendiente.</b> Se puede guardar igual; complétala cuando puedas:<ul style="margin:6px 0 0 18px">${cur.faltan.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
       <section class="etapa"><div class="etapa-head" style="cursor:default"><span class="etapa-t">En sala</span><span class="etapa-sub">Recibo, artículo, fotos, estado de cuenta y abonos</span></div><div class="etapa-body">
       <fieldset><legend>Recibo</legend><div class="fgrid">
@@ -3732,22 +3739,34 @@ function eAbrir(id, ir){
       <details class="e-plega" ${cur.observaciones ? 'open' : ''}><summary>Observaciones</summary><div class="fgrid" style="margin-top:8px">${inp('observaciones', 'Observaciones', {area: 1, wide: 1})}</div></details>
       </div></section>
       ${isNew ? '' : `
-      ${(() => { const toca = cur.estado !== 'En sala' || !!cur.retEstado || !!cur.fechaRetoma || !!cur.valorRetoma || (!!cur.fechaRecibo && daysBetween(cur.fechaRecibo, todayISO()) >= E_PLAZO); return toca ? '' : `<p class="small muted" id="eRetomaAviso" style="margin:12px 0 0">La parte de <b>Retoma</b> aparece cuando se cumplan ${E_PLAZO} días en sala (o si cambia el estado). <a href="#" id="eVerRetoma">Verla ahora</a></p>`; })()}
-      <section class="etapa" id="eRetomaBox" ${cur.estado !== 'En sala' || cur.retEstado || cur.fechaRetoma || cur.valorRetoma || (cur.fechaRecibo && daysBetween(cur.fechaRecibo, todayISO()) >= E_PLAZO) ? '' : 'hidden'}><div class="etapa-head" style="cursor:default"><span class="etapa-t">Retoma</span><span class="etapa-sub">Notificación al cliente, valor de retoma y aprobación del jefe</span></div><div class="etapa-body">
+      <section class="etapa" id="eRevBox" ${cur.estado !== 'En sala' || (cur.arreglos || []).length || cur.rvNecesita ? '' : 'hidden'}><div class="etapa-head" style="cursor:default"><span class="etapa-t">Revisión técnica</span><span class="etapa-sub">Qué tiene el artículo y qué hay que arreglar o comprar para venderlo</span></div><div class="etapa-body">
+      <fieldset><legend>Revisión</legend>
+        <p class="small muted" style="margin:0 0 8px">Pase el artículo a <b>Revisión técnica</b> (arriba, en Estado) cuando el cliente no lo recuperó. Anote si hay que mandarlo a arreglar, cambiar el vidrio, comprar el cargador, formatearlo, hacerle mantenimiento… y cuánto cuesta.</p>
+        <div class="fgrid">${inp('rvFecha', 'Fecha de la revisión', {date: 1})}${inp('rvPor', 'Quién lo revisó (técnico o encargada)')}${inp('rvNecesita', '¿Necesita arreglos o repuestos?', {sel: ['Sí', 'No, está listo para vender']})}${inp('rvDiag', 'Qué se encontró', {area: 1, wide: 1})}</div>
+        <div id="eArreglos" style="margin-top:10px"></div></fieldset>
+      ${cur.estado === 'En sala' && !ro && enc ? '<div class="nov-actions" id="eRevHint"><span class="small muted">Para empezar la revisión, cambie el estado a <b>Revisión técnica</b> y guarde.</span></div>' : ''}
+      </div></section>
+      ${(() => { const toca = cur.estado !== 'En sala' || !!cur.retEstado || !!cur.fechaRetoma || !!cur.valorRetoma || (!!cur.fechaRecibo && daysBetween(cur.fechaRecibo, todayISO()) >= E_PLAZO); return toca ? '' : `<p class="small muted" id="eRetomaAviso" style="margin:12px 0 0">La parte de <b>Avalúo y retoma</b> aparece cuando se cumplan ${E_PLAZO} días en sala (o si cambia el estado). <a href="#" id="eVerRetoma">Verla ahora</a></p>`; })()}
+      <section class="etapa" id="eRetomaBox" ${cur.estado !== 'En sala' || cur.retEstado || cur.fechaRetoma || cur.valorRetoma || (cur.fechaRecibo && daysBetween(cur.fechaRecibo, todayISO()) >= E_PLAZO) ? '' : 'hidden'}><div class="etapa-head" style="cursor:default"><span class="etapa-t">Avalúo y retoma</span><span class="etapa-sub">Notificación al cliente, valor de retoma, valor de venta y aprobación del jefe</span></div><div class="etapa-body">
       ${enc ? '' : '<p class="small muted">Esta parte la manejan las encargadas y la aprueba el jefe.</p>'}
       <fieldset><legend>1. Notificación de retoma al cliente</legend>
-        <p class="small muted" style="margin:0 0 8px">Obligatoria para enviar la retoma al jefe: el documento de la notificación y los comprobantes de envío por correo y WhatsApp (al deudor y, si tiene, al deudor solidario).</p>
+        <p class="small muted" style="margin:0 0 8px">Obligatoria para enviar el avalúo al jefe: el documento de la notificación y los comprobantes de envío por correo y WhatsApp (al deudor y, si tiene, al deudor solidario).</p>
         <div class="fgrid">${inp('tieneDS', '¿Cuántos deudores solidarios tiene el crédito?', {sel: ['Ninguno', '1', '2'], dis: !enc})}${inp('waTit', '¿El deudor tiene WhatsApp?', {sel: ['Sí', 'No'], dis: !enc})}${inp('waDS', '¿El deudor solidario tiene WhatsApp?', {sel: ['Sí', 'No', 'Solo uno de los 2'], dis: !enc})}</div>
         <div class="fotos" id="eNotRet" style="margin-top:8px"></div></fieldset>
-      <fieldset><legend>2. Valor de retoma</legend>
-        <div class="nov-head" style="margin-bottom:8px">${cur.retEstado === 'Aprobado' ? `<span class="chip pill-ok">Aprobada ${cur.retAprobadoEn ? 'el ' + esc(fdt(cur.retAprobadoEn)) : ''}</span> <span class="small">Retoma: <b>${money(cur.retAprobado)}</b></span>` : cur.retEstado === 'Pendiente' ? '<span class="chip pill-warn">Esperando aprobación del jefe</span>' : cur.retEstado === 'Devuelto' ? '<span class="chip pill-red">Devuelta para corregir</span>' : ''}${cur.retNota ? ` <span class="small">Comentario del jefe: ${esc(cur.retNota)}</span>` : ''}</div>
-        <div class="fgrid">${inp('capital', 'Lo que debe el cliente en total al retomarlo', {money: 1, dis: !enc || cur.retEstado === 'Aprobado', hint: 'El saldo total del crédito según el sistema de cobro (lo que pagaría para cancelarlo).'})}${inp('retValor', 'Valor de retoma propuesto', {money: 1, dis: !enc || cur.retEstado === 'Aprobado'})}</div>
+      <fieldset><legend>2. Avalúo: valor de retoma y valor de venta</legend>
+        <div class="nov-head" style="margin-bottom:8px">${cur.retEstado === 'Aprobado' ? `<span class="chip pill-ok">Aprobada ${cur.retAprobadoEn ? 'el ' + esc(fdt(cur.retAprobadoEn)) : ''}</span> <span class="small">Retoma: <b>${money(cur.retAprobado)}</b>${cur.vtAutorizado ? ` · Venta: <b>${money(cur.vtAutorizado)}</b>` : ''}</span>` : cur.retEstado === 'Pendiente' ? '<span class="chip pill-warn">Esperando aprobación del jefe</span>' : cur.retEstado === 'Devuelto' ? '<span class="chip pill-red">Devuelta para corregir</span>' : ''}${cur.retNota ? ` <span class="small">Comentario del jefe: ${esc(cur.retNota)}</span>` : ''}</div>
+        <div class="fgrid">${inp('capital', 'Lo que debe el cliente en total al retomarlo', {money: 1, dis: !enc || cur.retEstado === 'Aprobado', hint: 'El saldo total del crédito según el sistema de cobro (lo que pagaría para cancelarlo).'})}${inp('retValor', 'Valor de retoma propuesto', {money: 1, dis: !enc || cur.retEstado === 'Aprobado'})}${inp('retVenta', 'Valor de venta propuesto', {money: 1, dis: !enc || cur.retEstado === 'Aprobado'})}</div>
         <div id="eRetCalc" class="small" style="margin-top:8px"></div>
-        ${enc && !ro && cur.estado === 'En sala' && cur.retEstado !== 'Pendiente' && cur.retEstado !== 'Aprobado' ? '<div class="nov-actions" style="margin-top:10px"><button type="button" class="btn primary" id="eEnviarRet">Enviar retoma al jefe</button></div>' : ''}
+        ${enc && !ro && E_ANTES_VENTA.has(cur.estado) && cur.retEstado !== 'Pendiente' && cur.retEstado !== 'Aprobado' ? '<div class="nov-actions" style="margin-top:10px"><button type="button" class="btn primary" id="eEnviarRet">Enviar avalúo al jefe</button><span class="small muted">Pasa a la etapa Avalúo y le llega al jefe para aprobar.</span></div>' : ''}
         ${jefeAprueba ? `<div class="aprob" id="eAprob"><h3 style="margin:0 0 8px">Aprobación del jefe</h3>
-          <p style="margin:0 0 6px">Valor de retoma propuesto: <b>${money(cur.retValor) || 'no se escribió'}</b>. Si debe ser otro, escríbelo:</p>
-          <div class="fgrid"><div class="field"><label for="eApValor">Valor de retoma aprobado</label><input id="eApValor" class="money-in" inputmode="numeric" value="${esc(eMil(cur.retValor))}"></div><div class="field wide"><label for="eApNota">Comentario (opcional)</label><input id="eApNota"></div></div>
-          <div class="nov-actions" style="margin-top:10px"><button type="button" class="btn ok" id="eApOk">Aprobar retoma</button><button type="button" class="btn danger" id="eApNo">Devolver para corregir</button></div></div>` : ''}
+          <div class="tbl-wrap" style="margin:0 0 10px"><table><tbody>
+            <tr><td>Lo que debe el cliente en total</td><td class="num"><b>${money(cur.capital) || '—'}</b></td></tr>
+            <tr><td>Arreglos y repuestos (revisión técnica)</td><td class="num"><b>${money(eArreglos(cur)) || '$0'}</b>${(cur.arreglos || []).length ? ` <span class="small muted">· ${(cur.arreglos || []).map(a => esc(a.desc)).join(', ')}</span>` : cur.rvNecesita ? ' <span class="small muted">· no necesita</span>' : ''}</td></tr>
+            <tr><td>Valor de retoma propuesto</td><td class="num"><b>${money(cur.retValor) || '—'}</b></td></tr>
+            <tr><td>Valor de venta propuesto</td><td class="num"><b>${money(cur.retVenta) || '—'}</b></td></tr></tbody></table></div>
+          <p style="margin:0 0 6px">Si algún valor debe ser otro, escríbalo:</p>
+          <div class="fgrid"><div class="field"><label for="eApValor">Valor de retoma aprobado</label><input id="eApValor" class="money-in" inputmode="numeric" value="${esc(eMil(cur.retValor))}"></div><div class="field"><label for="eApVenta">Valor de venta aprobado</label><input id="eApVenta" class="money-in" inputmode="numeric" value="${esc(eMil(cur.retVenta))}"></div><div class="field wide"><label for="eApNota">Comentario (opcional)</label><input id="eApNota"></div></div>
+          <div class="nov-actions" style="margin-top:10px"><button type="button" class="btn ok" id="eApOk">Aprobar avalúo</button><button type="button" class="btn danger" id="eApNo">Devolver para corregir</button></div></div>` : ''}
       </fieldset>
       <fieldset id="eSaldoFs"><legend>3. Retoma y saldo del cliente</legend>
         ${isJefe() && cur.retEstado !== 'Aprobado' ? '<p class="small" style="margin:0 0 8px">Si este electrodoméstico <b>ya se retomó</b> (se bajó del sistema), escriba aquí la <b>fecha de retoma</b> y guarde. Desde ese día ya no cuenta como retenido en el informe de cartera.</p>' : ''}
@@ -3758,7 +3777,7 @@ function eAbrir(id, ir){
           <div class="fotos" id="eNotSal"></div></div></fieldset>
       </div></section>
       <section class="etapa" id="eVentaBox"><div class="etapa-head" style="cursor:default"><span class="etapa-t">Para la venta y salida</span><span class="etapa-sub">Venta, recuperación o chatarra</span></div><div class="etapa-body">
-      <fieldset data-e="venta"><legend>Para la venta</legend><div class="fgrid">${inp('vtAutorizado', 'Valor de venta autorizado', {money: 1})}</div></fieldset>
+      <fieldset data-e="venta"><legend>Para la venta</legend><div class="fgrid">${inp('vtAutorizado', 'Valor de venta autorizado', {money: 1, hint: 'Se llena solo con el valor de venta que aprobó el jefe en el avalúo.'})}</div></fieldset>
       <fieldset data-e="vendido"><legend>Venta</legend><div class="fgrid">${inp('comprador', 'Comprador', {hint: 'Si se lo quedó la empresa (para un punto o para cartera), escribe INVERSIONES MOTOS Y MOTOCARROS: sale como activo de la empresa y no cuenta como venta.'})}${inp('vtPdv', 'Punto donde se vendió', {sel: E_PDVS})}${inp('vtValorFinal', 'Valor final de venta', {money: 1})}${inp('modalidad', 'Modalidad', {sel: ['Contado', 'Crédito']})}${inp('vtRC', 'Recibo de caja o factura')}</div></fieldset>
       <fieldset data-e="recuperado"><legend>Recuperado por el cliente</legend><div class="fgrid">${inp('rc', 'Recibo de caja del pago')}</div><div class="small" id="eRecMsg" style="margin-top:6px"></div></fieldset>
       <fieldset data-e="salida"><legend>Salida</legend><div class="fgrid">${inp('fechaSalida', 'Fecha de salida', {date: 1, hint: 'El día en que se vendió, lo recuperó el cliente o se mandó a chatarra.'})}</div></fieldset>
@@ -3786,18 +3805,18 @@ function eAbrir(id, ir){
   if ($('#eSave')) $('#eSave').onclick = () => eGuardar(salir);
   if ($('#eDel')) $('#eDel').onclick = async () => { if (!confirmarE('¿Eliminar este electrodoméstico? Saldrá de todas las listas.')) return; await S.db.doc('electro/' + E.edit.id).set({...E.docs[E.edit.id], eliminado: {at: new Date().toISOString(), by: actorId()}}); toast('Eliminado'); salir(); };
   E.ro = ro;
-  eDrawFotos(); eDrawAbonos(); eSync();
+  eDrawFotos(); eDrawAbonos(); eDrawArreglos(); eSync();
   if (ir) setTimeout(() => { const t = ir === 'aprob' ? ($('#eAprob') || $('#eRetomaBox')) : $('#eRetomaBox'); if (t) { t.scrollIntoView({block: 'start', behavior: 'smooth'}); t.classList.add('bell-flash'); setTimeout(() => t.classList.remove('bell-flash'), 2600); } }, 150);
 }
 // confirmación sin ventanas del navegador: segundo clic confirma
 function confirmarE(msg){ const e = $('#eErr'); if (E._conf === msg) { E._conf = null; return true; } E._conf = msg; e.textContent = msg + ' Toca otra vez para confirmar.'; return false; }
-const E_LABEL = {faltan:'Datos pendientes', estado:'Estado', fechaRecibo:'Fecha de retención', pdv:'Punto de venta', deudor:'Cliente', cedula:'Cédula', forma:'Forma', retenidaPor:'Quién lo retuvo', recibidaPor:'Quién lo recibió', tipo:'Tipo', marca:'Marca', referencia:'Referencia', serial:'Serial', estadoFisico:'Cómo se recibió', accesorios:'Accesorios', capital:'Lo que debía al retomarlo', mora:'Valor vencido', interes:'Intereses por mora', gastos:'Gastos', observaciones:'Observaciones', tieneDS:'Deudores solidarios', waTit:'WhatsApp del deudor', waDS:'WhatsApp del deudor solidario', retValor:'Retoma propuesta', retEstado:'Aprobación de la retoma', retAprobado:'Retoma aprobada', fechaRetoma:'Fecha de retoma', scEstado:'Saldo del cliente', scFechaPago:'Fecha de pago del saldo', scRC:'Recibo del saldo', vtAutorizado:'Venta autorizada', comprador:'Comprador', vtPdv:'Punto donde se vendió', vtValorFinal:'Valor de venta', modalidad:'Modalidad', vtRC:'Recibo de la venta', rc:'Recibo de caja', fechaSalida:'Fecha de salida', fotos:'Fotos', abonos:'Abonos'};
-const E_CAMPOS = Object.keys(E_LABEL).filter(k => !['fotos','abonos','retEstado','retAprobado','faltan'].includes(k));
-const E_MONEY = new Set(['capital','mora','interes','gastos','retValor','vtAutorizado','vtValorFinal']);
+const E_LABEL = {faltan:'Datos pendientes', arreglos:'Arreglos (total)', estado:'Estado', fechaRecibo:'Fecha de retención', pdv:'Punto de venta', deudor:'Cliente', cedula:'Cédula', forma:'Forma', retenidaPor:'Quién lo retuvo', recibidaPor:'Quién lo recibió', tipo:'Tipo', marca:'Marca', referencia:'Referencia', serial:'Serial', estadoFisico:'Cómo se recibió', accesorios:'Accesorios', capital:'Lo que debía al retomarlo', mora:'Valor vencido', interes:'Intereses por mora', gastos:'Gastos', observaciones:'Observaciones', tieneDS:'Deudores solidarios', waTit:'WhatsApp del deudor', waDS:'WhatsApp del deudor solidario', retValor:'Retoma propuesta', retVenta:'Venta propuesta', rvFecha:'Fecha de la revisión', rvPor:'Quién lo revisó', rvNecesita:'Necesita arreglos', rvDiag:'Qué se encontró en la revisión', retEstado:'Aprobación del avalúo', retAprobado:'Retoma aprobada', retVentaAprob:'Venta aprobada', fechaRetoma:'Fecha de retoma', scEstado:'Saldo del cliente', scFechaPago:'Fecha de pago del saldo', scRC:'Recibo del saldo', vtAutorizado:'Venta autorizada', comprador:'Comprador', vtPdv:'Punto donde se vendió', vtValorFinal:'Valor de venta', modalidad:'Modalidad', vtRC:'Recibo de la venta', rc:'Recibo de caja', fechaSalida:'Fecha de salida', fotos:'Fotos', abonos:'Abonos'};
+const E_CAMPOS = Object.keys(E_LABEL).filter(k => !['fotos','abonos','retEstado','retAprobado','faltan','arreglos'].includes(k));
+const E_MONEY = new Set(['capital','mora','interes','gastos','retValor','retVenta','vtAutorizado','vtValorFinal']);
 function eLeer(){
   const o = {...E.edit.cur};
-  for (const k of E_CAMPOS) { const el = $('#e_' + k); if (!el) continue; let x = el.value.trim(); if (E_MONEY.has(k)) x = x ? eNum(x) : null; else if (el.tagName !== 'SELECT' && el.type !== 'date' && k !== 'observaciones' && k !== 'accesorios') x = x.toUpperCase(); o[k] = x === '' ? null : x; }
-  o.abonos = E.abonos; o.fotos = E.fotos.map(({saved, ...f}) => f);
+  for (const k of E_CAMPOS) { const el = $('#e_' + k); if (!el) continue; let x = el.value.trim(); if (E_MONEY.has(k)) x = x ? eNum(x) : null; else if (el.tagName !== 'SELECT' && el.type !== 'date' && k !== 'observaciones' && k !== 'accesorios' && k !== 'rvDiag') x = x.toUpperCase(); o[k] = x === '' ? null : x; }
+  o.abonos = E.abonos; o.fotos = E.fotos.map(({saved, ...f}) => f); if (E.arreglos) o.arreglos = E.arreglos.map(({nuevo, ...a}) => a);
   return o;
 }
 function eSync(){
@@ -3806,13 +3825,15 @@ function eSync(){
   const ds = nDS(r.tieneDS), w = $('#e_waDS'); if (w) w.closest('.field').hidden = !ds;
   const cu = $('#eCuenta'); if (cu) cu.innerHTML = `Para recuperarlo debe pagar <b>${money(eRecuperar(r)) || '$0'}</b> (vencido + intereses + gastos${eAbonado(r) ? ' − abonos' : ''}). `;
   const rc = $('#eRetCalc'); if (rc) rc.innerHTML = eRetoma(r) ? `Debe en total ${money(eDeudaTotal(r))} − retoma ${money(eRetoma(r))} = ${eSaldo(r) > 0 ? `<b class="rojo">el cliente queda debiendo ${money(eSaldo(r))}</b>` : '<b>el cliente queda a paz y salvo</b>'}.` : '';
-  const sf = $('#eSaldoFs'); if (sf) sf.hidden = !(r.retEstado === 'Aprobado' || st !== 'En sala' || isJefe());
+  const sf = $('#eSaldoFs'); if (sf) sf.hidden = !(r.retEstado === 'Aprobado' || !E_ANTES_VENTA.has(st) || isJefe());
+  const rv = $('#eRevBox'); if (rv && st !== 'En sala') rv.hidden = false; const rh = $('#eRevHint'); if (rh) rh.hidden = st !== 'En sala';
+  const rc2 = $('#eRetCalc'); if (rc2 && eArreglos(r)) rc2.innerHTML += ` <span class="muted">Arreglos de la revisión técnica: <b>${money(eArreglos(r))}</b>.</span>`;
   const sc = $('#e_scEstado'); if (sc) sc.closest('.field').hidden = !(eSaldo(r) > 0);
   ['scFechaPago', 'scRC'].forEach(k => { const el = $('#e_' + k); if (el) el.closest('.field').hidden = r.scEstado !== 'Pagó el saldo: paz y salvo'; });
   const nb = $('#eNotSalBox'); if (nb) { const antes = nb.hidden; nb.hidden = !ePideNotSal(r); if (antes !== nb.hidden) eDrawFotos(); }
   const show = (k, v) => { const f = document.querySelector(`.sheet fieldset[data-e="${k}"]`); if (f) f.hidden = !v; };
   show('venta', st === 'Para la venta' || st === 'Vendido'); show('vendido', st === 'Vendido'); show('recuperado', st === 'Recuperado por el cliente'); show('salida', ['Vendido', 'Recuperado por el cliente', 'Chatarra'].includes(st));
-  const vb = $('#eVentaBox'); if (vb) vb.hidden = st === 'En sala';
+  const vb = $('#eVentaBox'); if (vb) vb.hidden = E_ANTES_VENTA.has(st);
   const rm = $('#eRecMsg'); if (rm) rm.innerHTML = st === 'Recuperado por el cliente' ? (eRecuperar(r) > 0 ? `<span class="rojo">El cliente todavía debe ${money(eRecuperar(r))}. Registra el pago como abono antes de marcarlo como recuperado.</span>` : 'El cliente ya cubrió la mora, los intereses y los gastos.') : '';
 }
 
@@ -3841,6 +3862,24 @@ function eDrawFotos(){
   document.querySelectorAll('.sheet [data-ei]').forEach(b => b.onclick = () => { const prev = [S.editFotos, S.fotosRO]; S.editFotos = E.fotos; S.fotosRO = true; verFotos(+b.dataset.ei);
     const lb = document.querySelector('.lightbox'); const restaurar = () => { S.editFotos = prev[0]; S.fotosRO = prev[1]; }; if (lb) new MutationObserver((_, o) => { if (!document.body.contains(lb)) { restaurar(); o.disconnect(); } }).observe(document.body, {childList: true}); else restaurar(); });
   document.querySelectorAll('.sheet [data-equit]').forEach(b => b.onclick = () => { E.fotos.splice(+b.dataset.equit, 1); eDrawFotos(); const m = $('#eFotoMsg'); if (m) m.textContent = 'Guarda los cambios para quitarla.'; });
+}
+
+/* ---------- arreglos de la revisión técnica ---------- */
+function eDrawArreglos(){
+  const box = $('#eArreglos'); if (!box) return;
+  const ro = E.ro || !isEnc(), L = E.arreglos || (E.arreglos = []);
+  const tot = L.reduce((t, a) => t + (+a.valor || 0), 0);
+  box.innerHTML = `<h3 style="margin:0 0 6px;font-size:15px">Arreglos y repuestos</h3>
+    ${L.length ? `<div class="tbl-wrap"><table><thead><tr><th>Qué se hace o se compra</th><th>Quién lo hace / dónde</th><th class="num">Valor</th><th>Estado</th><th></th></tr></thead><tbody>${L.map((a, i) => `<tr><td>${esc(a.desc)}</td><td>${esc(a.quien || '')}</td><td class="num">${money(a.valor)}</td><td>${ro ? esc(a.hecho ? 'Hecho' : 'Pendiente') : `<label class="chk"><input type="checkbox" data-earh="${i}" ${a.hecho ? 'checked' : ''}> Hecho</label>`}</td><td>${ro ? '' : `<button type="button" class="btn danger" data-earq="${i}" style="min-height:28px;padding:0 8px" aria-label="Quitar">×</button>`}</td></tr>`).join('')}
+      <tr><td colspan="2"><b>Total arreglos</b></td><td class="num"><b>${money(tot)}</b></td><td colspan="2"></td></tr></tbody></table></div>` : '<p class="small muted" style="margin:0 0 6px">Sin arreglos anotados.</p>'}
+    ${ro ? '' : `<div class="fgrid" style="margin-top:8px"><div class="field wide"><label for="eArD">Arreglo o repuesto</label><input id="eArD" placeholder="Ej.: cambio de vidrio, cargador, formatear, mantenimiento"></div><div class="field"><label for="eArQ">Quién lo hace / dónde</label><input id="eArQ"></div><div class="field"><label for="eArV">Valor</label><input id="eArV" class="money-in" inputmode="numeric" placeholder="$"></div></div>
+      <div class="nov-actions" style="margin-top:6px"><button type="button" class="btn" id="eArAdd">+ Agregar arreglo</button></div>`}`;
+  const v = $('#eArV'); if (v) v.oninput = () => { const x = eNum(v.value); v.value = x ? x.toLocaleString('es-CO') : ''; };
+  const add = $('#eArAdd'); if (add) add.onclick = () => { const desc = $('#eArD').value.trim(), quien = $('#eArQ').value.trim(), valor = eNum($('#eArV').value);
+    if (!desc) { $('#eErr').textContent = 'Escriba qué arreglo o repuesto es.'; return; }
+    L.push({desc: desc.toUpperCase(), quien: quien.toUpperCase(), valor, hecho: false, at: new Date().toISOString(), by: actorId()}); $('#eErr').textContent = ''; eDrawArreglos(); eSync(); };
+  box.querySelectorAll('[data-earq]').forEach(b => b.onclick = () => { L.splice(+b.dataset.earq, 1); eDrawArreglos(); eSync(); });
+  box.querySelectorAll('[data-earh]').forEach(b => b.onchange = () => { L[+b.dataset.earh].hecho = b.checked; });
 }
 
 /* ---------- abonos ---------- */
@@ -3878,17 +3917,18 @@ async function eGuardar(salir, accion){
   // retoma: enviar al jefe
   if (accion === 'enviarRet') {
     const fn = notifFaltan(E.fotos, NOTIF_RET, v);
-    const f2 = [!v.tieneDS && 'indicar cuántos deudores solidarios tiene', !v.waTit && 'indicar si el deudor tiene WhatsApp', nDS(v.tieneDS) && !v.waDS && 'indicar si el deudor solidario tiene WhatsApp', fn.length && 'notificación de retoma: ' + fn.join(', '), !v.capital && 'lo que debe el cliente en total al retomarlo', !v.retValor && 'el valor de retoma propuesto'].filter(Boolean);
-    if (f2.length) { if (falta('Para enviar la retoma al jefe falta: ' + f2.join('; ') + '.')) return; }
-    v.retEstado = 'Pendiente'; v.retAprobado = null; v.retNota = null;
+    const f2 = [!v.rvNecesita && 'la revisión técnica (si necesita arreglos o no)', v.rvNecesita === 'Sí' && !(v.arreglos || []).length && 'los arreglos de la revisión técnica', !v.retVenta && 'el valor de venta propuesto', !v.tieneDS && 'indicar cuántos deudores solidarios tiene', !v.waTit && 'indicar si el deudor tiene WhatsApp', nDS(v.tieneDS) && !v.waDS && 'indicar si el deudor solidario tiene WhatsApp', fn.length && 'notificación de retoma: ' + fn.join(', '), !v.capital && 'lo que debe el cliente en total al retomarlo', !v.retValor && 'el valor de retoma propuesto'].filter(Boolean);
+    if (f2.length) { if (falta('Para enviar el avalúo al jefe falta: ' + f2.join('; ') + '.')) return; }
+    v.retEstado = 'Pendiente'; v.retAprobado = null; v.retNota = null; v.estado = 'Avalúo';
   }
-  if (v.retEstado === 'Aprobado' && +v.retValor !== +prev.retValor) { v.retEstado = 'Pendiente'; v.retAprobado = null; }
+  if (v.retEstado === 'Aprobado' && (+v.retValor !== +prev.retValor || +(v.retVenta || 0) !== +(prev.retVenta || 0))) { v.retEstado = 'Pendiente'; v.retAprobado = null; }
   const cambiaEstado = !isNew && v.estado !== prev.estado;
   if (cambiaEstado) {
-    if (!['En sala','Para la venta'].includes(prev.estado) && !S.owner) { if (falta('Este electrodoméstico ya salió (' + prev.estado + '). Solo Kenny puede cambiar su estado.')) return; }
+    if (!E_PODER.has(prev.estado) && !S.owner) { if (falta('Este electrodoméstico ya salió (' + prev.estado + '). Solo Kenny puede cambiar su estado.')) return; }
     if (v.estado !== 'Chatarra' && v.estado !== 'Recuperado por el cliente' && v.estado !== 'En sala' && !isEnc()) { if (falta('Solo las encargadas y el jefe pueden pasarlo a ' + v.estado + '.')) return; }
+    if (v.estado === 'Avalúo' && accion !== 'enviarRet' && !v.rvNecesita) { if (falta('Antes del avalúo, llene la revisión técnica (si necesita arreglos o no).')) return; }
     if (v.estado === 'Para la venta') {
-      if (prev.retEstado !== 'Aprobado') { if (falta('Para pasarlo a la venta, el jefe tiene que aprobar primero la retoma (sección Retoma).')) return; }
+      if (prev.retEstado !== 'Aprobado') { if (falta('Para pasarlo a la venta, el jefe tiene que aprobar primero el avalúo (sección Avalúo y retoma).')) return; }
       if (!v.fechaRetoma) { if (falta('Escribe la fecha de retoma.')) return; }
     }
     if (v.estado === 'Vendido') { const f3 = [!v.comprador && 'el comprador', !v.vtValorFinal && 'el valor final de venta', !v.modalidad && 'la modalidad', !v.fechaSalida && 'la fecha de salida'].filter(Boolean); if (prev.estado !== 'Para la venta') { if (falta('Solo se puede vender lo que está para la venta.')) return; } if (f3.length) { if (falta('Para marcarlo como vendido falta: ' + f3.join(', ') + '.')) return; } }
@@ -3911,13 +3951,15 @@ async function eGuardar(salir, accion){
     if (v.estado === 'Recuperado por el cliente' && !v.fechaSalida) pend.push('Falta la fecha en que se le entregó al cliente');
     v.faltan = pend.length ? [...new Set(pend)] : null;
   }
-  const nota = ($('#eNota') && $('#eNota').value.trim()) || (accion === 'enviarRet' ? 'Envió la retoma al jefe' : '');
+  const nota = ($('#eNota') && $('#eNota').value.trim()) || (accion === 'enviarRet' ? 'Envió el avalúo al jefe' : '');
+  if (!isNew && JSON.stringify(prev.arreglos || []) !== JSON.stringify(v.arreglos || [])) v._arr = 1;
   if (cambiaEstado && !nota) { const n = $('#eNota'); if (n) n.focus(); { if (falta('Escribe por qué cambias el estado (en el recuadro de abajo).')) return; } }
   // historial
   const now = new Date().toISOString();
   const cambios = isNew ? [] : [...E_CAMPOS, 'retEstado'].filter(k => String(prev[k] ?? '') !== String(v[k] ?? '')).map(k => ({campo: k, antes: E_MONEY.has(k) && prev[k] ? money(prev[k]) : prev[k] ?? null, despues: E_MONEY.has(k) && v[k] ? money(v[k]) : v[k] ?? null}));
   if (!isNew && (prev.fotos || []).length !== v.fotos.length) cambios.push({campo: 'fotos', antes: String((prev.fotos || []).length), despues: String(v.fotos.length)});
   if (!isNew && (prev.abonos || []).length !== E.abonos.length) cambios.push({campo: 'abonos', antes: String((prev.abonos || []).length), despues: String(E.abonos.length)});
+  if (v._arr) { cambios.push({campo: 'arreglos', antes: money(eArreglos(prev)) || '$0', despues: money(eArreglos(v)) || '$0'}); delete v._arr; }
   if (vieja && JSON.stringify(prev.faltan || null) !== JSON.stringify(v.faltan || null)) cambios.push({campo: 'faltan', antes: String((prev.faltan || []).length), despues: String((v.faltan || []).length)});
   if (!isNew && !cambios.length) { salir(); return; }
   v.historial = [...(prev.historial || []), isNew ? {at: now, by: actorId(), nuevo: true} : {at: now, by: actorId(), cambios, nota: nota || null}];
@@ -3925,19 +3967,20 @@ async function eGuardar(salir, accion){
   v.abonos = E.abonos.map(a => ({...a, saved: true}));
   delete v.id;
   const btn = $('#eSave'); if (btn) btn.disabled = true;
-  try { await S.db.doc('electro/' + id).set(v); E.docs[id] = {...v, id}; toast(isNew ? 'Electrodoméstico registrado' : accion === 'enviarRet' ? 'Retoma enviada al jefe' : 'Cambios guardados'); salir(); }
+  try { await S.db.doc('electro/' + id).set(v); E.docs[id] = {...v, id}; toast(isNew ? 'Electrodoméstico registrado' : accion === 'enviarRet' ? 'Avalúo enviado al jefe' : 'Cambios guardados'); salir(); }
   catch (e) { if (btn) btn.disabled = false; falta('No se pudo guardar. Revisa la conexión e intenta otra vez.'); }
 }
 async function eAprobar(ok, salir){
   const {cur, id} = E.edit, err = $('#eErr');
-  const val = eNum($('#eApValor').value), nota = $('#eApNota').value.trim();
+  const val = eNum($('#eApValor').value), venta = $('#eApVenta') ? eNum($('#eApVenta').value) : 0, nota = $('#eApNota').value.trim();
   if (ok && !val) { err.textContent = 'Escribe el valor de retoma aprobado.'; return; }
+  if (ok && !venta) { err.textContent = 'Escribe el valor de venta aprobado.'; return; }
   if (!ok && !nota) { err.textContent = 'Escribe en el comentario qué hay que corregir.'; return; }
   const now = new Date().toISOString();
-  const doc = {...cur, retEstado: ok ? 'Aprobado' : 'Devuelto', retAprobado: ok ? val : null, retAprobadoPor: actorId(), retAprobadoEn: now, retNota: nota || null, updatedAt: now, updatedBy: actorId(),
-    historial: [...(cur.historial || []), {at: now, by: actorId(), nota: nota || null, cambios: [{campo: 'retEstado', antes: 'Pendiente', despues: ok ? 'Aprobado' : 'Devuelto'}].concat(ok ? [{campo: 'retAprobado', antes: null, despues: money(val)}] : [])}]};
+  const doc = {...cur, retEstado: ok ? 'Aprobado' : 'Devuelto', retAprobado: ok ? val : null, vtAutorizado: ok ? venta : (cur.vtAutorizado || null), retVentaAprob: ok ? venta : null, retAprobadoPor: actorId(), retAprobadoEn: now, retNota: nota || null, updatedAt: now, updatedBy: actorId(),
+    historial: [...(cur.historial || []), {at: now, by: actorId(), nota: nota || null, cambios: [{campo: 'retEstado', antes: 'Pendiente', despues: ok ? 'Aprobado' : 'Devuelto'}].concat(ok ? [{campo: 'retAprobado', antes: null, despues: money(val)}, {campo: 'vtAutorizado', antes: null, despues: money(venta)}] : [])}]};
   delete doc.id;
-  try { await S.db.doc('electro/' + id).set(doc); E.docs[id] = {...doc, id}; toast(ok ? 'Retoma aprobada' : 'Retoma devuelta para corregir'); salir(); }
+  try { await S.db.doc('electro/' + id).set(doc); E.docs[id] = {...doc, id}; toast(ok ? 'Avalúo aprobado' : 'Avalúo devuelto para corregir'); salir(); }
   catch (e) { err.textContent = 'No se pudo guardar. Intenta otra vez.'; }
 }
 window.ELE = {
@@ -3946,6 +3989,7 @@ window.ELE = {
   pdvs(){ return [...new Set([...eLista().map(r => r.pdv).filter(Boolean), ...E_PDVS])]; },
   render: eRender, abrir: eAbrir, iniciar: eIniciar,
   pend: () => isJefe() ? eLista().filter(eRetPend) : [],
+  paraRevision: () => eLista().filter(eVencido),
   todos: () => eLista(),
   resumen(){ const all = eLista(); return {cargado: E.cargado, enSala: all.filter(r => r.estado === 'En sala').length, venc: all.filter(eVencido).length, pend: all.filter(eRetPend).length, venta: all.filter(r => r.estado === 'Para la venta').length, jefe: isJefe(), plazo: E_PLAZO, puede: ePuedeEditar()}; }
 };
@@ -4046,7 +4090,7 @@ const C_TDESC = {
   eentrega: ['Entrega voluntaria de electrodoméstico', 'Se le pide entregar el artículo en 5 días hábiles.'],
   eretoma: ['Retoma de electrodoméstico', 'Se hace efectiva la dación en pago del artículo.'],
 };
-const C_COMUNES = ['nombre', 'cc', 'direccion', 'ciudadCliente', 'dsNombre', 'dsCc', 'tel', 'almacen'];
+const C_COMUNES = ['nombre', 'cc', 'direccion', 'ciudadCliente', 'dsNombre', 'dsCc', 'ds2Nombre', 'ds2Cc', 'tel', 'almacen'];
 const C_PIE_RETOMA = 'Inversiones Motos y Motocarros SAS NIT 9004997487 Dirección Calle 21 Nº 6-69 Barrio Loma Fresca- Caucasia-Antioquia teléfono: 3208086239 Correo electrónico: carteramym17@gmail.com';
 const C_MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 function cLetras(n){
@@ -4287,6 +4331,15 @@ const C_CAMPOS = {
     ['g', 'Plazo y contacto'], ['plazo', 'Fecha límite para pagar o entregar (déjela vacía: se llena a mano)', {date: 1}], ['almacen', 'Dirección del almacén donde puede pagar', {req: 1, wide: 1}], ['tel', 'Teléfono / WhatsApp de contacto', {req: 1}],
   ],
 };
+// todas las cartas permiten 1 o 2 deudores solidarios
+for (const lst of Object.values(C_CAMPOS)) {
+  let i = lst.findIndex(f => f[0] === 'dsCc');
+  if (i < 0) { const j = lst.findIndex(f => f[0] === 'cc') >= 0 ? lst.findIndex(f => f[0] === 'cc') : lst.findIndex(f => f[0] === 'nombre'); lst.splice(j + 1, 0, ['dsNombre', 'Deudor solidario 1 (si tiene)', {wide: 1}], ['dsCc', 'Cédula del deudor solidario 1']); i = j + 2; }
+  else { lst[i - 1] = ['dsNombre', 'Deudor solidario 1 (si tiene)', {wide: 1}]; lst[i] = ['dsCc', 'Cédula del deudor solidario 1']; }
+  lst.splice(i + 1, 0, ['ds2Nombre', 'Deudor solidario 2 (si tiene)', {wide: 1}], ['ds2Cc', 'Cédula del deudor solidario 2']);
+}
+// líneas de los deudores solidarios debajo del nombre del deudor
+function cDS(parrafo, d, pre = '', sep = ', cc '){ const L = [[d.dsNombre, d.dsCc], [d.ds2Nombre, d.ds2Cc]].filter(x => x[0]); L.forEach(([n, c]) => parrafo([[`${pre}${n}${c ? sep + c : ''}`, true]], {after: 0})); return L.length; }
 function cAbrir(id, tipoNuevo){
   cIniciar();
   const r = id ? C.docs[id] : null, tipo = r ? r.tipo : tipoNuevo, ro = !cPuede();
@@ -4489,7 +4542,9 @@ async function cGuardar(salir){
   const falta = C_CAMPOS[tipo].filter(([k, , o = {}]) => k !== 'g' && o.req && (d[k] == null || d[k] === '')).map(x => x[1]);
   if (falta.length) { err.textContent = 'Falta: ' + falta.join(', ') + '.'; return; }
   if (tipo === 'visita' && d.plazo && d.fecha && d.plazo < d.fecha) { err.textContent = 'La fecha límite no puede ser anterior a la fecha de la visita.'; return; }
-  if (d.dsCc && !d.dsNombre) { err.textContent = 'Escribe el nombre del deudor solidario o borra su cédula.'; return; }
+  if (d.dsCc && !d.dsNombre) { err.textContent = 'Escribe el nombre del deudor solidario 1 o borra su cédula.'; return; }
+  if (d.ds2Cc && !d.ds2Nombre) { err.textContent = 'Escribe el nombre del deudor solidario 2 o borra su cédula.'; return; }
+  if (d.ds2Nombre && !d.dsNombre) { d.dsNombre = d.ds2Nombre; d.dsCc = d.ds2Cc; d.ds2Nombre = null; d.ds2Cc = null; }
   cLs('ciudad', d.ciudad || ''); if (tipo === 'visita') { cLs('tel', d.tel || ''); cLs('almacen', d.almacen || ''); }
   const now = new Date().toISOString();
   const numero = r ? r.numero : Math.max(0, ...Object.values(C.docs).map(x => +x.numero || 0)) + 1;
@@ -4634,7 +4689,7 @@ async function cHacerPdf(tipo, d){
 
   if (tipo === 'retoma1') {
     parrafo([['Ciudad, ', true], [d.ciudad || '', false], [', Fecha ', true], [fechaNum(d.fecha), false]], {align: 'right', after: T * 1.6});
-    parrafo([['Señor', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); parrafo([['Ciudad: ', false], [d.ciudadCliente || '', true]], {after: T * 1.8});
+    parrafo([['Señor', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); cDS(parrafo, d); parrafo([['Ciudad: ', false], [d.ciudadCliente || '', true]], {after: T * 1.8});
     parrafo([['ASUNTO: NOTIFICACIÓN DE RETOMA DEL VEHÍCULO', true]], {after: T * 1.4});
     parrafo([['INVERSIONES MOTOS Y MOTOCARROS S.A.S.,', true], [' sociedad legalmente constituida e identificada con el NIT 900499748, se permite informarle que, en cumplimiento de lo pactado en el contrato de dación en pago y en la correspondiente carta de instrucciones para su diligenciamiento, documentos suscritos por usted, esta empresa procederá de manera inmediata a hacer efectivo el objeto contractual respecto del siguiente vehículo, cuyas características se detallan a continuación:', false]], {align: 'justify'});
     tablaVehiculo();
@@ -4651,7 +4706,7 @@ async function cHacerPdf(tipo, d){
     parrafo([['Celular: ', true], [C_CEL, false]], {after: 0}); parrafo([['Correo electrónico: ', true], [C_CORREO, false]], {after: 0});
   } else if (tipo === 'eretoma') {
     parrafo([['Ciudad, ', true], [d.ciudad || '', false], [', Fecha ', true], [fechaNum(d.fecha), false]], {align: 'right', after: T * 1.6});
-    parrafo([['Señor', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); parrafo([['Ciudad: ', false], [d.ciudadCliente || '', true]], {after: T * 1.8});
+    parrafo([['Señor', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); cDS(parrafo, d); parrafo([['Ciudad: ', false], [d.ciudadCliente || '', true]], {after: T * 1.8});
     parrafo([['ASUNTO: NOTIFICACIÓN DE RETOMA DE ELECTRODOMÉSTICO', true]], {after: T * 1.4});
     parrafo([['INVERSIONES MOTOS Y MOTOCARROS S.A.S.,', true], [' sociedad legalmente constituida e identificada con el NIT 900499748, se permite informarle que, en cumplimiento de lo pactado en el contrato de dación en pago y en la correspondiente carta de instrucciones para su diligenciamiento, documentos suscritos por usted, esta empresa procederá de manera inmediata a hacer efectivo el objeto contractual respecto del siguiente artículo, cuyas características se detallan a continuación:', false]], {align: 'justify'});
     tablaArticulo();
@@ -4667,9 +4722,10 @@ async function cHacerPdf(tipo, d){
     parrafo([['Kenny Hoyos', true]], {after: 0}); parrafo([['Líder de Cartera', true]], {after: 0}); parrafo([['Inversiones Motos Y Motocarros S.A.S', true]], {after: 0});
     parrafo([['Celular: ', true], [C_CEL, false]], {after: 0}); parrafo([['Correo electrónico: ', true], [C_CORREO, false]], {after: 0});
   } else if (tipo === 'eentrega') {
-    { const [ey, em, ed] = (d.fecha || '').split('-'); const M2 = C_MESES[+em - 1] || ''; parrafo([[`${d.ciudad || ''}, ${ed || ''}/${M2.charAt(0).toUpperCase() + M2.slice(1)}/${ey || ''}`, true]], {align: 'right', after: T * 1.6}); }
-    parrafo([['Señor(a)', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); if (d.direccion) parrafo([[d.direccion, false]], {after: 0}); espacio(T * 1.4);
-    parrafo([['ASUNTO: NOTIFICACIÓN DE ENTREGA VOLUNTARIA DE ELECTRODOMÉSTICOS', true]], {after: T * 1.2});
+    const nds = [d.dsNombre, d.ds2Nombre].filter(Boolean).length;   // con deudores solidarios se aprietan los espacios para que quepa en una hoja
+    { const [ey, em, ed] = (d.fecha || '').split('-'); const M2 = C_MESES[+em - 1] || ''; parrafo([[`${d.ciudad || ''}, ${ed || ''}/${M2.charAt(0).toUpperCase() + M2.slice(1)}/${ey || ''}`, true]], {align: 'right', after: T * (nds ? 0.9 : 1.6)}); }
+    parrafo([['Señor(a)', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); cDS(parrafo, d); if (d.direccion) parrafo([[d.direccion, false]], {after: 0}); espacio(T * (nds ? 0.6 : 1.4));
+    parrafo([['ASUNTO: NOTIFICACIÓN DE ENTREGA VOLUNTARIA DE ELECTRODOMÉSTICOS', true]], {after: T * (nds ? 0.7 : 1.2)});
     parrafo([['CASANOVA.,', true], [' sociedad legalmente constituida, identificada con el NIT. 900499748-7, le informa que, teniendo en cuenta el incumplimiento reiterado en su obligación con nuestra empresa, se le solicita la entrega voluntaria del electrodoméstico dentro de los próximos cinco (05) días hábiles desde el recibido de esta notificación, en atención al gravamen prendario constituido sobre el artículo de las siguientes características:', false]], {align: 'justify'});
     tablaArticulo();
     parrafo([['Se le advierte que, a pesar que realice la entrega del electrodoméstico, si no realiza el pago de la mora de la obligación dentro de los quince (15) días calendario siguientes a la fecha de entrega, la empresa procederá a ejecutar el contrato de dación en pago suscrito por usted para aplicar el valor total o parcial a la obligación.', false]], {align: 'justify'});
@@ -4680,12 +4736,13 @@ async function cHacerPdf(tipo, d){
     parrafo([['Kenny Hoyos', true]], {after: 0}); parrafo([['Líder de Cartera', true]], {after: 0}); parrafo([[C_EMPRESA + ' · NIT ' + C_NIT, false]], {after: 0});
     parrafo([['Celular: ', true], [C_CEL, false]], {after: 0}); parrafo([['Correo electrónico: ', true], [C_CORREO, false]], {after: 0});
   } else if (tipo === 'retoma2') {
-    parrafo([['Ciudad ', true], [d.ciudad || '', false], [', Fecha ', true], [fechaNum(d.fecha), false]], {align: 'right', after: T * 1.6});
+    const dos = !!(d.dsNombre && d.ds2Nombre);   // con 2 deudores solidarios se aprietan los espacios para que quepa en una hoja
+    parrafo([['Ciudad ', true], [d.ciudad || '', false], [', Fecha ', true], [fechaNum(d.fecha), false]], {align: 'right', after: T * (dos ? 1.0 : 1.6)});
     parrafo([['Señor', false]], {after: 0});
     parrafo([[`${d.nombre || ''}, cc ${d.cc || ''}`, true]], {after: 0});
-    if (d.dsNombre) parrafo([[`${d.dsNombre}, cc ${d.dsCc || ''}`, true]], {after: 0});
-    parrafo([['Ciudad, ' + (d.ciudadCliente || ''), false]], {after: T * 1.8});
-    parrafo([['ASUNTO: NOTIFICACIÓN DE RETOMA DEL VEHÍCULO - CONTINUACIÓN DE COBRO JURÍDICO POR PAGO PARCIAL DE LA DEUDA', true]], {align: 'justify', after: T * 1.4});
+    cDS(parrafo, d);
+    parrafo([['Ciudad, ' + (d.ciudadCliente || ''), false]], {after: T * (dos ? 1.0 : 1.8)});
+    parrafo([['ASUNTO: NOTIFICACIÓN DE RETOMA DEL VEHÍCULO - CONTINUACIÓN DE COBRO JURÍDICO POR PAGO PARCIAL DE LA DEUDA', true]], {align: 'justify', after: T * (dos ? 0.9 : 1.4)});
     parrafo([['INVERSIONES MOTOS Y MOTOCARROS SAS.,', true], [' sociedad legalmente constituida, identificada con el NIT. 900499748-7, le informa que, conforme al contrato de dación en pago suscrito por usted, se procedió a hacer efectiva la dación en pago del siguiente vehículo:', false]], {align: 'justify'});
     tablaVehiculo();
     parrafo([[`Es importante mencionar que el valor comercial del vehículo fue aplicado como abono parcial a la deuda, de acuerdo al análisis realizado del vehículo previo a la venta del mismo. Sin embargo, y como se menciona expresamente en la cláusula tercera del contrato, la dación en pago no cubrió la totalidad de la deuda y quedó un saldo pendiente de ${cPesosLetras(d.saldo)} (`, false], [cMil(d.saldo), true], ['), el cual continúa siendo exigible y podrá ser reclamado judicialmente.', false]], {align: 'justify'});
@@ -4698,7 +4755,7 @@ async function cHacerPdf(tipo, d){
     parrafo([['Celular: ', true], [C_CEL, false], ['   Correo electrónico: ', true], [C_CORREO, false]], {after: 0});
   } else if (tipo === 'entrega') {
     parrafo([['Ciudad ', true], [d.ciudad || '', false], [', Fecha ', true], [cFechaLarga(d.fecha), false]], {align: 'right', after: T * 1.6});
-    parrafo([['Señor(a)', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); parrafo([['Ciudad ' + (d.ciudadCliente || ''), false]], {after: T * 2});
+    parrafo([['Señor(a)', false]], {after: 0}); parrafo([[d.nombre || '', true]], {after: 0}); cDS(parrafo, d); parrafo([['Ciudad ' + (d.ciudadCliente || ''), false]], {after: T * 2});
     parrafo([['ASUNTO: NOTIFICACIÓN DE ENTREGA VOLUNTARIA DEL VEHÍCULO', true]], {after: T * 1.6});
     parrafo([['INVERSIONES MOTOS Y MOTOCARROS SAS.,', true], [' sociedad legalmente constituida, identificada con el NIT. 900499748-7, le informa que, teniendo en cuenta el incumplimiento reiterado en su obligación con nuestra empresa, se le solicita la entrega voluntaria del vehículo dentro de los próximos cinco (05) días hábiles desde el recibido de esta notificación, en atención al gravamen prendario constituido sobre el vehículo de las siguientes características:', false]], {align: 'justify'});
     tablaVehiculo();
@@ -4715,7 +4772,7 @@ async function cHacerPdf(tipo, d){
     parrafo([[`${d.ciudad || ''}, ________ de ____________________ de 20______`, false], ['     Hora: ', false], ['______________', false]], {after: T * 0.8});
     parrafo([['Señor(a)', false]], {after: 0});
     parrafo([[`${d.nombre || ''} – C.C. ${d.cc || ''}`, true]], {after: 0});
-    if (d.dsNombre) parrafo([[`Deudor solidario: ${d.dsNombre} – C.C. ${d.dsCc || ''}`, true]], {after: 0});
+    cDS(parrafo, d, 'Deudor solidario: ', ' – C.C. ');
     parrafo([['Dirección: ' + (d.direccion || ''), false]], {after: T * 0.8});
     parrafo([['Asunto:', true], [` Visita y requerimiento de pago y entrega de la motocicleta – Obligación N.° ${d.obligacion || ''} – Motocicleta de placa ${d.placa || ''}`, false]], {align: 'justify', after: T * 0.8});
     parrafo([['Cordial saludo.', false]], {after: T * 0.6});
@@ -4779,7 +4836,7 @@ function cTraerMotoUI(){
     const mk = /AKT/i.test(d.marca || '') ? 'AKT' : /TVS/i.test(d.marca || '') ? 'TVS' : d.marca ? 'OTRA MARCA' : ''; pon('marca', mk);
     let li = d.linea || ''; try { if (typeof lineaCanon === 'function') li = lineaCanon(mk, li) || li; } catch (e) {}
     pon('linea', li); pon('color', d.color); pon('modelo', String(d.modelo || '').replace(/\D/g, '').slice(0, 4)); pon('placa', d.placa || P); pon('chasis', d.chasis);
-    if (d.dsNombre) pon('tieneDS', '1');
+    if (d.ds2Nombre) pon('tieneDS', '2'); else if (d.dsNombre) pon('tieneDS', '1');
     try { dupCheck(); } catch (e) {}
     msg.innerHTML = hechos.length ? `Listo: se llenaron ${hechos.length} datos ${r.ult ? `de la carta N.° ${esc(r.ult.numero)} (${esc(C_TIPOS[r.ult.tipo] || '')}, ${fd(r.ult.d.fecha)})` : 'de la lectura de la tarjeta'}. <b>Revíselos</b> y complete lo demás (fecha, quién la recibió…).` : 'Los datos ya estaban llenos; no se cambió nada.';
   };
@@ -4876,7 +4933,7 @@ async function cLoteLeer(files, pinta){
       const P = nid(d.placa || '');
       if (P) {
         const cs = Object.values(C.docs).filter(x => !x.eliminada && x.d && nid(x.d.placa) === P && !C_ELE.has(x.tipo)).sort((a, b) => String(a.at).localeCompare(String(b.at)));
-        for (const c of cs) for (const [k, v] of Object.entries(c.d)) if (!nunca.has(k) && v != null && v !== '' && (d[k] == null || d[k] === '' || ['nombre', 'cc', 'dsNombre', 'dsCc', 'ciudadCliente'].includes(k))) d[k] = v;
+        for (const c of cs) for (const [k, v] of Object.entries(c.d)) if (!nunca.has(k) && v != null && v !== '' && (d[k] == null || d[k] === '' || ['nombre', 'cc', 'dsNombre', 'dsCc', 'ds2Nombre', 'ds2Cc', 'ciudadCliente'].includes(k))) d[k] = v;
         const m = records().filter(z => nid(z.placa) === P).sort((a, b) => String(b.fechaRecibo || '').localeCompare(String(a.fechaRecibo || '')))[0];
         if (m) { if (!d.nombre) d.nombre = m.deudor; if (m.fechaRecibo) d.fechaEntrega = m.fechaRecibo; if (!d.ciudadCliente && m.pdv) d.ciudadCliente = m.pdv; }
       }
