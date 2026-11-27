@@ -1651,6 +1651,12 @@ function claveNueva(){ const A = 'abcdefghjkmnpqrstuvwxyz23456789'; const v = cr
 const normUser = v => String(v || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9._-]/g, '');
 const miRol = () => S.owner ? 'Administradora' : rolActual();
 const isEnc = () => S.owner || ['Encargada','Jefe'].includes(rolActual());
+// avisos del archivo anterior que siguen vigentes: si el dato ya se corrigió en la ficha, el aviso deja de salir
+const revVig = r => (r.revisar || []).filter(m => { const t = String(m || ''); const ch = String(r.chasis || '').replace(/[\s.\-\u200B-\u200D\u2060\uFEFF]/g, ''), mo = String(r.motor || '').replace(/\s/g, '');
+  if (/chasis/i.test(t) && /caracter/i.test(t)) return ch.length !== 17;
+  if (/chasis/i.test(t) && !ch) return true; if (/chasis/i.test(t) && /falta|vac/i.test(t)) return !ch;
+  if (/motor/i.test(t) && /falta|vac/i.test(t)) return !mo;
+  return true; });
 const isJefe = () => S.owner || rolActual() === 'Jefe';
 function aplicarRol(){
   const r = miRol();
@@ -1910,7 +1916,7 @@ function retenidaAl(r, d){
 function filtered(all){
   const f = S.f, q = sinTilde(f.text.trim()), t = q.replace(/[\s-]/g,''), words = q.split(/[\s,]+/).filter(Boolean);
   const base = all.filter(r => (!f.corte || retenidaAl(r, f.corte)) && (!f.estado || (f.estado==='__poder' ? PODER.has(r.estado) : r.estado===f.estado))
-    && (!f.pdv || r.pdv===f.pdv || sinTilde(r.pdv||'').toUpperCase()===sinTilde(f.pdv).toUpperCase()) && (!f.year || (r.fechaRecibo||'').startsWith(f.year)) && (!f.revisar || (r.revisar && r.revisar.length)) && (!f.repetidas || veces(r).total > 1) && (!f.desc || descPend(r)));
+    && (!f.pdv || r.pdv===f.pdv || sinTilde(r.pdv||'').toUpperCase()===sinTilde(f.pdv).toUpperCase()) && (!f.year || (r.fechaRecibo||'').startsWith(f.year)) && (!f.revisar || revVig(r).length) && (!f.repetidas || veces(r).total > 1) && (!f.desc || descPend(r)));
   const orden = (a,b) => (b.fechaRecibo||'').localeCompare(a.fechaRecibo||'') || (b.numero||0)-(a.numero||0);
   S.fuzzy = false;
   if (!t) return base.sort(orden);
@@ -1955,7 +1961,7 @@ function vMotos(all){
   ${nAbon != null ? `<p style="margin:0 0 10px"><b>${rows.length}</b> motos en sala · de ellas, <b>${nAbon}</b> abonando <span class="chip st-abono">abonando</span></p>` : ''}
   <div class="tbl-wrap"><table><thead><tr><th class="num">N.°</th><th>Retención</th><th>Punto</th><th>Deudor</th><th>Moto</th><th>Placa</th><th>Estado</th><th>Salida</th><th>Veces retenida</th><th></th></tr></thead><tbody>
   ${slice.map(r => `<tr class="click" data-id="${esc(r.id)}" tabindex="0"><td class="num">${esc(r.numero)}</td><td>${fd(r.fechaRecibo)}</td><td>${esc(r.pdv)}</td><td>${esc(r.deudor)}</td><td>${esc(r.linea)}</td><td>${plate(r.placa)}</td><td>${chipR(r)}</td><td>${fd(r.fechaSalida)}</td><td>${vezChip(r) || '<span class="muted small">1</span>'}</td>
-    <td>${r.retoma === 'Sí' ? `<span class="chip" title="Retomada: ya no afecta la cartera">Retomada${r.fechaRetoma ? ' ' + fd(r.fechaRetoma) : ''}</span> ` : ''}${dobleAbierta(r)?'<span class="chip pill-red">Registrada dos veces</span> ':''}${r._del?'<span class="chip pill-red">Eliminada</span> ':''}${cobroPend(r)?'<span class="chip pill-red">Cobro pendiente</span> ':''}${isNovedad(r)?'<span class="chip pill-warn">Por revisar</span> ':''}${r.revisar&&r.revisar.length?'<span class="chip st-sd">Dato por corregir</span>':''}${r.faltan&&r.faltan.length?' <span class="chip pill-warn">Faltan datos</span>':''}${r.estado==='Recuperada por el cliente'&&r.recDesde&&r.recDesde!=='En sala'?` <span class="chip st-recup">desde ${esc({'En taller':'taller','Para la venta':'venta'}[r.recDesde] || r.recDesde.toLowerCase())}</span>`:''}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Ninguna moto coincide con la búsqueda.</td></tr>'}
+    <td>${r.retoma === 'Sí' ? `<span class="chip" title="Retomada: ya no afecta la cartera">Retomada${r.fechaRetoma ? ' ' + fd(r.fechaRetoma) : ''}</span> ` : ''}${dobleAbierta(r)?'<span class="chip pill-red">Registrada dos veces</span> ':''}${r._del?'<span class="chip pill-red">Eliminada</span> ':''}${cobroPend(r)?'<span class="chip pill-red">Cobro pendiente</span> ':''}${isNovedad(r)?'<span class="chip pill-warn">Por revisar</span> ':''}${revVig(r).length?'<span class="chip st-sd">Dato por corregir</span>':''}${r.faltan&&r.faltan.length?' <span class="chip pill-warn">Faltan datos</span>':''}${r.estado==='Recuperada por el cliente'&&r.recDesde&&r.recDesde!=='En sala'?` <span class="chip st-recup">desde ${esc({'En taller':'taller','Para la venta':'venta'}[r.recDesde] || r.recDesde.toLowerCase())}</span>`:''}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Ninguna moto coincide con la búsqueda.</td></tr>'}
   </tbody></table></div>
   <div class="pager"><span>${nfmt(rows.length)} motos · página ${S.f.page+1} de ${pages}</span>
     <button class="btn" id="pgPrev" ${S.f.page?'':'disabled'}>Anterior</button><button class="btn" id="pgNext" ${S.f.page<pages-1?'':'disabled'}>Siguiente</button></div>`;
@@ -2318,7 +2324,7 @@ function openMoto(id){
       <div id="recWarn"></div>
       ${cur.estado === 'Recuperada por el cliente' && cur.recDesde && cur.recDesde !== 'En sala' ? `<div class="banner" style="margin:0">El cliente recuperó la moto cuando estaba en <b>${esc(cur.recDesde)}</b>.</div>` : ''}
       ${cur.faltan && cur.faltan.length && !ro ? `<div class="revisar"><b>Guardada con información pendiente.</b> Te falta:<ul style="margin:4px 0 0;padding-left:18px">${cur.faltan.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
-      ${cur.revisar && cur.revisar.length ? `<div class="revisar"><b>Datos por corregir del archivo anterior:</b><br>${cur.revisar.map(esc).join('<br>')}</div>` : ''}
+      ${revVig(cur).length ? `<div class="revisar"><b>Datos por corregir del archivo anterior:</b><br>${revVig(cur).map(esc).join('<br>')}</div>` : ''}
       ${secs.map(s => s === 'Abonos' || s === 'Notif' ? '' : s === 'Estado de cuenta' ? edcSection(cur, ro, input) : s === 'Peritaje' ? peritajeSection(input, cur, ro) : s === 'Estado' ? (ro || isNew ? '' : '<div id="abOpen" hidden style="margin:-4px 0 14px"><button type="button" class="btn" id="abOpenBtn">Abono ▸</button> <span class="small muted">Ábrelo solo cuando el cliente vaya a abonar o a recuperar la moto.</span></div>') + abonosSection(ro, input) : s === 'Avalúo' ? avaluoSection(input, cur, enc) : s === 'Para la venta' ? ventaSection(input, cur) : s === 'Retoma' ? retomaSection(input) : s === 'Venta y traspaso' ? ventaTraspasoSection(input, cur) :
         `<fieldset data-fs="${esc(s)}"><legend>${esc(s)}</legend><div class="fgrid">${FIELDS.filter(f=>f.s===s).map(input).join('')}</div></fieldset>` + (s === 'Moto' ? fotosSection(ro) : '')).join('')}
       ${hist.length ? `<details class="hist-box"><summary class="btn">Ver historial de cambios (${hist.length})</summary><fieldset style="margin-top:8px"><legend>Historial de cambios</legend><ul class="hist">${hist.map(h => `<li><div class="nov-meta"><span data-name="${esc(h.by)}">${esc(who(h.by).name)}</span> · ${esc(fdt(h.at))}${S.rev[cur.id] && S.rev[cur.id].at >= h.at ? ' · <span class="chip pill-ok">revisado</span>':''}</div>
@@ -2458,7 +2464,7 @@ function openMoto(id){
       fill(); ma.addEventListener('change', fill);
       li.addEventListener('change', () => { const c = lineaCanon(ma.value, li.value); if (c) li.value = c; }); } }
   if (isNew) { $('#f_deudor').addEventListener('input', () => { $('#deuWarn').innerHTML = deudaPrevia(readForm()); });
-    $('#f_deudor').focus(); ['f_placa','f_chasis'].forEach(id => $('#'+id).addEventListener('input', dupCheck)); try { cTraerMotoUI(); } catch (e) {} }
+    $('#f_deudor').focus(); ['f_placa','f_chasis'].forEach(id => $('#'+id).addEventListener('input', dupCheck)); ['f_chasis', 'f_motor'].forEach(id => { const el = $('#' + id); if (el) el.addEventListener('input', () => { const v = el.value.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, ''); if (v !== el.value) el.value = v; }); }); try { cTraerMotoUI(); } catch (e) {} }
   document.querySelectorAll('.sheet tr[data-goto]').forEach(tr => tr.onclick = () => { const id = tr.dataset.goto; root.innerHTML = ''; document.removeEventListener('keydown', esc_); openMoto(id); });
   // the sheet is grouped by stage: everything done while the moto was "en sala" is one block, then peritaje, avalúo...
   // only the current stage is open; earlier stages are one line that opens with a tap
@@ -3201,6 +3207,7 @@ function readForm(){
     let v = el.value.trim();
     if (f.t==='money' || f.t==='int') v = v.replace(/[^\d]/g,'') ? +v.replace(/[^\d]/g,'') : null;
     else if ((f.t === 'text' || f.t === 'textarea' || f.up) && v) v = v.toUpperCase();
+    if ((f.k === 'chasis' || f.k === 'motor') && v) v = v.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '');   // al copiar y pegar del RUNT a veces vienen espacios o caracteres invisibles
     o[f.k] = v === '' ? null : v;
   }
   return o;
