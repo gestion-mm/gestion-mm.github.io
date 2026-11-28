@@ -3754,14 +3754,14 @@ function eAbrir(id, ir){
         <p class="small muted" style="margin:0 0 8px"><b>Esta etapa es opcional.</b> Si el artículo está bien, páselo directo a <b>Avalúo</b> (arriba, en Estado). Úsela solo si hay que arreglarlo. Anote si hay que mandarlo a arreglar, cambiar el vidrio, comprar el cargador, formatearlo, hacerle mantenimiento… y cuánto cuesta.</p>
         <div class="fgrid">${inp('rvFecha', 'Fecha de la revisión', {date: 1})}${inp('rvPor', 'Quién lo revisó (técnico o encargada)')}${inp('rvNecesita', '¿Necesita arreglos o repuestos?', {sel: ['Sí', 'No, está listo para vender']})}${inp('rvDiag', 'Qué se encontró', {area: 1, wide: 1})}</div>
         <div id="eArreglos" style="margin-top:10px"></div></fieldset>
-      ${cur.estado === 'En sala' && !ro && enc ? '<div class="nov-actions" id="eRevHint"><span class="small muted">Si hay que arreglarlo, cambie el estado a <b>Revisión técnica</b>. Si está bien, cámbielo a <b>Avalúo</b> y guarde: le sale listo a la encargada para hacer el avalúo.</span></div>' : ''}
+      ${cur.estado === 'En sala' && !ro ? '<div class="nov-actions" id="eRevHint"><span class="small muted">Si hay que arreglarlo, cambie el estado a <b>Revisión técnica</b>. Si está bien, cámbielo a <b>Avalúo</b> y guarde: le sale listo a la encargada para hacer el avalúo.</span></div>' : ''}
       </div></section>
       ${(() => { const toca = cur.estado !== 'En sala' || !!cur.retEstado || !!cur.fechaRetoma || !!cur.valorRetoma || (!!cur.fechaRecibo && daysBetween(cur.fechaRecibo, todayISO()) >= E_PLAZO); return toca ? '' : `<p class="small muted" id="eRetomaAviso" style="margin:12px 0 0">La parte de <b>Avalúo y retoma</b> aparece cuando se cumplan ${E_PLAZO} días en sala (o si cambia el estado). <a href="#" id="eVerRetoma">Verla ahora</a></p>`; })()}
       <section class="etapa" id="eRetomaBox" ${cur.estado !== 'En sala' || cur.retEstado || cur.fechaRetoma || cur.valorRetoma || (cur.fechaRecibo && daysBetween(cur.fechaRecibo, todayISO()) >= E_PLAZO) ? '' : 'hidden'}><div class="etapa-head" style="cursor:default"><span class="etapa-t">Avalúo y retoma</span><span class="etapa-sub">Notificación al cliente, valor de retoma, valor de venta y aprobación del jefe</span></div><div class="etapa-body">
-      ${enc ? '' : '<p class="small muted">Esta parte la manejan las encargadas y la aprueba el jefe.</p>'}
+      ${enc ? '' : '<p class="small muted">La notificación al cliente y sus fotos las puede subir cualquiera del equipo. Los valores del avalúo los llenan las encargadas y los aprueba el jefe.</p>'}
       <fieldset><legend>1. Notificación de retoma al cliente</legend>
         <p class="small muted" style="margin:0 0 8px">Obligatoria para enviar el avalúo al jefe: el documento de la notificación y los comprobantes de envío por correo y WhatsApp (al deudor y, si tiene, al deudor solidario).</p>
-        <div class="fgrid">${inp('tieneDS', '¿Cuántos deudores solidarios tiene el crédito?', {sel: ['Ninguno', '1', '2'], dis: !enc})}${inp('waTit', '¿El deudor tiene WhatsApp?', {sel: ['Sí', 'No'], dis: !enc})}${inp('waDS', '¿El deudor solidario tiene WhatsApp?', {sel: ['Sí', 'No', 'Solo uno de los 2'], dis: !enc})}</div>
+        <div class="fgrid">${inp('tieneDS', '¿Cuántos deudores solidarios tiene el crédito?', {sel: ['Ninguno', '1', '2'], dis: ro})}${inp('waTit', '¿El deudor tiene WhatsApp?', {sel: ['Sí', 'No'], dis: ro})}${inp('waDS', '¿El deudor solidario tiene WhatsApp?', {sel: ['Sí', 'No', 'Solo uno de los 2'], dis: ro})}</div>
         <div class="fotos" id="eNotRet" style="margin-top:8px"></div></fieldset>
       <fieldset><legend>2. Avalúo: valor de retoma y valor de venta</legend>
         <div class="nov-head" style="margin-bottom:8px">${cur.retEstado === 'Aprobado' ? `<span class="chip pill-ok">Aprobada ${cur.retAprobadoEn ? 'el ' + esc(fdt(cur.retAprobadoEn)) : ''}</span> <span class="small">Retoma: <b>${money(cur.retAprobado)}</b>${cur.vtAutorizado ? ` · Venta: <b>${money(cur.vtAutorizado)}</b>` : ''}</span>` : cur.retEstado === 'Pendiente' ? '<span class="chip pill-warn">Esperando aprobación del jefe</span>' : cur.retEstado === 'Devuelto' ? '<span class="chip pill-red">Devuelta para corregir</span>' : ''}${cur.retNota ? ` <span class="small">Comentario del jefe: ${esc(cur.retNota)}</span>` : ''}</div>
@@ -3860,7 +3860,7 @@ function eDrawFotos(){
   const par = (lista, el) => { if (!el) return; const ds = nDS(r.tieneDS);
     el.innerHTML = lista.filter(tag => ds || !tag.includes('deudor solidario')).map(tag => { const req = notifPide(tag, r), hit = de(tag);
       if (!req && !hit.length) return `<div class="foto-par"><div class="foto empty" style="aspect-ratio:auto;min-height:70px;cursor:default;border-style:solid"><span class="small muted" style="padding:6px;text-align:center">No tiene WhatsApp: no se pide captura</span></div><span class="par-tag">${esc(tag.replace('al titular', 'al deudor'))}</span></div>`;
-      return `<div class="foto-par"><div class="par-in">${hit.map(([f, i]) => t(f, i)).join('')}${hit.length >= 2 || ro || !isEnc() ? '' : `<button type="button" class="foto empty" data-etag="${esc(tag)}"><span>${hit.length ? '+ Otra' : '+ Tomar foto'}</span></button>`}</div><span class="par-tag">${esc(tag.replace('al titular', 'al deudor'))}</span></div>`; }).join(''); };
+      return `<div class="foto-par"><div class="par-in">${hit.map(([f, i]) => t(f, i)).join('')}${hit.length >= 2 || ro ? '' : `<button type="button" class="foto empty" data-etag="${esc(tag)}"><span>${hit.length ? '+ Otra' : '+ Tomar foto'}</span></button>`}</div><span class="par-tag">${esc(tag.replace('al titular', 'al deudor'))}</span></div>`; }).join(''); };
   par(NOTIF_RET, $('#eNotRet')); par(NOTIF_SAL, $('#eNotSal'));
   document.querySelectorAll('.sheet [data-etag]').forEach(b => b.onclick = () => {
     if (E.fotos.length >= 30) { $('#eFotoMsg').textContent = 'Ya hay 30 fotos, que es el máximo.'; return; }
@@ -3877,17 +3877,20 @@ function eDrawFotos(){
 /* ---------- arreglos de la revisión técnica ---------- */
 function eDrawArreglos(){
   const box = $('#eArreglos'); if (!box) return;
-  const ro = E.ro || !isEnc(), L = E.arreglos || (E.arreglos = []);
+  const ro = E.ro, L = E.arreglos || (E.arreglos = []);
   const tot = L.reduce((t, a) => t + (+a.valor || 0), 0);
   box.innerHTML = `<h3 style="margin:0 0 6px;font-size:15px">Arreglos y repuestos</h3>
     ${L.length ? `<div class="tbl-wrap"><table><thead><tr><th>Qué se hace o se compra</th><th>Quién lo hace / dónde</th><th class="num">Valor</th><th>Estado</th><th></th></tr></thead><tbody>${L.map((a, i) => `<tr><td>${esc(a.desc)}</td><td>${esc(a.quien || '')}</td><td class="num">${money(a.valor)}</td><td>${ro ? esc(a.hecho ? 'Hecho' : 'Pendiente') : `<label class="chk"><input type="checkbox" data-earh="${i}" ${a.hecho ? 'checked' : ''}> Hecho</label>`}</td><td>${ro ? '' : `<button type="button" class="btn danger" data-earq="${i}" style="min-height:28px;padding:0 8px" aria-label="Quitar">×</button>`}</td></tr>`).join('')}
       <tr><td colspan="2"><b>Total arreglos</b></td><td class="num"><b>${money(tot)}</b></td><td colspan="2"></td></tr></tbody></table></div>` : '<p class="small muted" style="margin:0 0 6px">Sin arreglos anotados.</p>'}
     ${ro ? '' : `<div class="fgrid" style="margin-top:8px"><div class="field wide"><label for="eArD">Arreglo o repuesto</label><input id="eArD" placeholder="Ej.: cambio de vidrio, cargador, formatear, mantenimiento"></div><div class="field"><label for="eArQ">Quién lo hace / dónde</label><input id="eArQ"></div><div class="field"><label for="eArV">Valor</label><input id="eArV" class="money-in" inputmode="numeric" placeholder="$"></div></div>
-      <div class="nov-actions" style="margin-top:6px"><button type="button" class="btn" id="eArAdd">+ Agregar arreglo</button></div>`}`;
+      <div class="nov-actions" style="margin-top:6px"><button type="button" class="btn primary" id="eArAdd">+ Agregar arreglo</button><span id="eArMsg" class="small" role="status"></span></div>`}`;
   const v = $('#eArV'); if (v) v.oninput = () => { const x = eNum(v.value); v.value = x ? x.toLocaleString('es-CO') : ''; };
   const add = $('#eArAdd'); if (add) add.onclick = () => { const desc = $('#eArD').value.trim(), quien = $('#eArQ').value.trim(), valor = eNum($('#eArV').value);
-    if (!desc) { $('#eErr').textContent = 'Escriba qué arreglo o repuesto es.'; return; }
-    L.push({desc: desc.toUpperCase(), quien: quien.toUpperCase(), valor, hecho: false, at: new Date().toISOString(), by: actorId()}); $('#eErr').textContent = ''; eDrawArreglos(); eSync(); };
+    const msg = $('#eArMsg');
+    if (!desc) { msg.className = 'small rojo'; msg.textContent = 'Primero escriba arriba qué arreglo o repuesto es (y su valor), y luego toque "Agregar arreglo".'; $('#eArD').focus(); $('#eArD').scrollIntoView({block: 'center', behavior: 'smooth'}); return; }
+    L.push({desc: desc.toUpperCase(), quien: quien.toUpperCase(), valor, hecho: false, at: new Date().toISOString(), by: actorId()}); eDrawArreglos(); eSync();
+    const m2 = $('#eArMsg'); if (m2) { m2.className = 'small okc'; m2.textContent = `Agregado: ${desc.toUpperCase()}${valor ? ' · ' + money(valor) : ''}. Recuerde tocar Guardar.`; } const d2 = $('#eArD'); if (d2) d2.focus(); };
+  ['#eArD', '#eArQ', '#eArV'].forEach(id => { const el = $(id); if (el) el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add && add.click(); } }; });
   box.querySelectorAll('[data-earq]').forEach(b => b.onclick = () => { L.splice(+b.dataset.earq, 1); eDrawArreglos(); eSync(); });
   box.querySelectorAll('[data-earh]').forEach(b => b.onchange = () => { L[+b.dataset.earh].hecho = b.checked; });
 }
@@ -3935,7 +3938,7 @@ async function eGuardar(salir, accion){
   const cambiaEstado = !isNew && v.estado !== prev.estado;
   if (cambiaEstado) {
     if (!E_PODER.has(prev.estado) && !S.owner) { if (falta('Este electrodoméstico ya salió (' + prev.estado + '). Solo Kenny puede cambiar su estado.')) return; }
-    if (v.estado !== 'Chatarra' && v.estado !== 'Recuperado por el cliente' && v.estado !== 'En sala' && !isEnc()) { if (falta('Solo las encargadas y el jefe pueden pasarlo a ' + v.estado + '.')) return; }
+    if (!['Chatarra', 'Recuperado por el cliente', 'En sala', 'Revisión técnica', 'Avalúo'].includes(v.estado) && !isEnc()) { if (falta('Solo las encargadas y el jefe pueden pasarlo a ' + v.estado + '.')) return; }
     if (v.estado === 'Para la venta') {
       if (prev.retEstado !== 'Aprobado') { if (falta('Para pasarlo a la venta, el jefe tiene que aprobar primero el avalúo (sección Avalúo y retoma).')) return; }
       if (!v.fechaRetoma) { if (falta('Escribe la fecha de retoma.')) return; }
